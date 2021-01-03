@@ -118,7 +118,7 @@ enum
     elem_found
   };
 
-int
+static int
 cache_idx_lookup (GDBM_FILE dbf, off_t adr, size_t *idx)
 {
   if (dbf->cache_num == 0)
@@ -201,6 +201,8 @@ cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
     case elem_new:
       if (!dbf->cache_avail)
 	{
+	  if (dbf->cache_lru->ca_adr < adr)
+	    n--;
 	  if (cache_lru_free (dbf))
 	    return elem_failure;
 	}
@@ -216,6 +218,9 @@ cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
       if (n < dbf->cache_num)
 	memmove (&dbf->cache_idx[n + 1], &dbf->cache_idx[n],
 		 (dbf->cache_num - n) * sizeof (dbf->cache_idx[0]));
+      else if (n == dbf->cache_size)
+	n--;
+
       dbf->cache_idx[n].elem = elem;
 
       elem->ca_adr = adr;
