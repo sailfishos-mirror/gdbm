@@ -157,15 +157,11 @@ typedef struct
 } data_cache_elem;
 
 typedef struct cache_elem cache_elem;
-typedef struct cache_node cache_node;
 
-struct cache_node
+typedef struct
 {
-  cache_node *left, *right, *parent; 
-  int color;
-  off_t adr;
   cache_elem *elem;
-};
+} cache_idx;
 
 struct cache_elem
 {
@@ -178,13 +174,9 @@ struct cache_elem
 				  ca_next is used.  It points to the next
 			          available element. */
   size_t          ca_hits;     /* Number of times this element was requested */
-  cache_node      *ca_node;    /* Points back to the RBT node for this
-				  element. */
-  hash_bucket     ca_bucket[1];/* Associated  bucket (dbf->header->bucket_size
+  hash_bucket     *ca_bucket;  /* Associated  bucket (dbf->header->bucket_size
 				  bytes). */
 };
-
-typedef struct cache_tree cache_tree;
 
 /* This final structure contains all main memory based information for
    a gdbm file.  This allows multiple gdbm files to be opened at the same
@@ -248,8 +240,12 @@ struct gdbm_file_info
   /* The bucket cache. */
   size_t cache_size;       /* Cache capacity */
   size_t cache_num;        /* Actual number of elements in cache */
-  /* Cache elements form a binary search tree. */
-  cache_tree *cache_tree;  
+
+  /* Cache element storage */
+  cache_elem *cache_storage;
+  /* Cache index sorted by offset */
+  cache_idx *cache_idx;
+  
   /* Cache elements are linked in a list sorted by relative access time */
   cache_elem *cache_mru;   /* Most recently used element - head of the list */
   cache_elem *cache_lru;   /* Last recently used element - tail of the list */ 

@@ -154,7 +154,8 @@ _gdbm_finish_transfer (GDBM_FILE dbf, GDBM_FILE new_dbf,
 
   dbf->cache_size        = new_dbf->cache_size;  
   dbf->cache_num         = new_dbf->cache_num;   
-  dbf->cache_tree        = new_dbf->cache_tree;   
+  dbf->cache_storage     = new_dbf->cache_storage;
+  dbf->cache_idx         = new_dbf->cache_idx;
   dbf->cache_entry       = new_dbf->cache_entry;  
   dbf->cache_lru         = new_dbf->cache_lru;   
   dbf->cache_avail       = new_dbf->cache_avail;

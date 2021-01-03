@@ -84,21 +84,6 @@ int _gdbm_dump (GDBM_FILE dbf, FILE *fp);
 /* From recover.c */
 int _gdbm_next_bucket_dir (GDBM_FILE dbf, int bucket_dir);
 
-/* cachetree.c */
-cache_tree *_gdbm_cache_tree_alloc (void);
-void _gdbm_cache_tree_destroy (cache_tree *tree);
-void _gdbm_cache_tree_delete (cache_tree *tree, struct cache_node *n);
-
-/* Return codes for _gdbm_cache_tree_lookup. */
-enum
-  {
-    node_found,   /* Returned element was found in cache. */
-    node_new,     /* Returned element has been created and inserted to cache */
-    node_failure  /* An error occurred. */
-  };
-
-int _gdbm_cache_tree_lookup (cache_tree *tree, off_t adr, cache_node **retval);
-
 /* I/O functions */
 static inline ssize_t
 gdbm_file_read (GDBM_FILE dbf, void *buf, size_t size)
