@@ -128,9 +128,6 @@ cache_elem_new (GDBM_FILE dbf, off_t adr)
 
   elem->ca_prev = elem->ca_next = NULL;
   elem->ca_hits = 0;
-  elem->ca_node = NULL;
-  
-  dbf->cache_num++;
   
   return elem;
 }
@@ -139,8 +136,14 @@ cache_elem_new (GDBM_FILE dbf, off_t adr)
 static void
 cache_elem_free (GDBM_FILE dbf, cache_elem *elem)
 {
-  _gdbm_cache_tree_delete (dbf->cache_tree, elem->ca_node);
+  int i;
+  
   lru_unlink_elem (dbf, elem);
+
+  for (i = 0; i < GDBM_DIR_COUNT (dbf); i++)
+    if (dbf->cache[i] == elem)
+      dbf->cache[i] = NULL;
+
   elem->ca_next = dbf->cache_avail;
   dbf->cache_avail = elem;
   dbf->cache_num--;
@@ -159,63 +162,57 @@ cache_lru_free (GDBM_FILE dbf)
   cache_elem_free (dbf, last);
   return 0;
 }
-  
+
 static int
-cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
+cache_elem_insert (GDBM_FILE dbf, cache_elem *elem)
+{
+  off_t adr = elem->ca_adr;
+  int i;
+  
+  if (dbf->cache_size != GDBM_CACHE_AUTO && dbf->cache_num == dbf->cache_size
+      && cache_lru_free (dbf))
+    {
+      cache_elem_free (dbf, elem);
+      return -1;
+    }
+       
+  for (i = 0; i < GDBM_DIR_COUNT (dbf); i++)
+    {
+      if (dbf->dir[i] == adr)
+	dbf->cache[i] = elem;
+    }
+
+  dbf->cache_num++;
+  return 0;
+}
+
+enum
+  {
+    cache_found,
+    cache_new,
+    cache_failure
+  };
+
+static int
+cache_lookup (GDBM_FILE dbf, int diridx, cache_elem *ref, cache_elem **ret_elem)
 {
   int rc;
-  cache_node *node;
   cache_elem *elem;
-  int retrying = 0;
   
   dbf->cache_access_count++;
- retry:
-  rc = _gdbm_cache_tree_lookup (dbf->cache_tree, adr, &node);
-  switch (rc)
+  if ((elem = dbf->cache[diridx]) != NULL)
     {
-    case node_found:
-      elem = node->elem;
       elem->ca_hits++;
       dbf->cache_hits++;
       lru_unlink_elem (dbf, elem);
-      break;
-      
-    case node_new:
-      elem = cache_elem_new (dbf, adr);
-      if (!elem)
-	{
-	  _gdbm_cache_tree_delete (dbf->cache_tree, node);
-	  return node_failure;
-	}
-      elem->ca_node = node;
-      node->elem = elem;
-      
-      if (dbf->cache_size != GDBM_CACHE_AUTO
-	  && dbf->cache_num > dbf->cache_size
-	  && cache_lru_free (dbf))
-	{
-	  cache_elem_free (dbf, elem);
-	  return node_failure;
-	}
-      break;
-      
-    case node_failure:
-      if (!retrying)
-	{
-	  if (errno == ENOMEM)
-	    {
-	      /* Release the last recently used element and retry. */
-	      if (cache_lru_free (dbf))
-		return node_failure;
-	      retrying = 1;
-	      goto retry;
-	    }
-	}
-      return node_failure;
-
-    default:
-      abort ();
+      rc = cache_found;
     }
+  else if ((elem = cache_elem_new (dbf, dbf->dir[diridx])) == NULL)
+    return cache_failure;
+  else if (cache_elem_insert (dbf, elem))
+    return cache_failure;
+  else
+    rc = cache_new;
   
   lru_link_elem (dbf, elem, ref);
   *ret_elem = elem;
@@ -252,12 +249,12 @@ _gdbm_get_bucket (GDBM_FILE dbf, int dir_index)
   if (dbf->cache_entry && dbf->cache_entry->ca_adr == bucket_adr)
     return 0;
   
-  switch (cache_lookup (dbf, bucket_adr, NULL, &elem))
+  switch (cache_lookup (dbf, dir_index, NULL, &elem))
     {
-    case node_found:
+    case cache_found:
       break;
       
-    case node_new:
+    case cache_new:
       /* Position the file pointer */
       file_pos = gdbm_file_seek (dbf, bucket_adr, SEEK_SET);
       if (file_pos != bucket_adr)
@@ -306,7 +303,7 @@ _gdbm_get_bucket (GDBM_FILE dbf, int dir_index)
       
       break;
       
-    case node_failure:
+    case cache_failure:
       return -1;
     }
   set_cache_entry (dbf, elem);
@@ -343,43 +340,16 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
       off_t        dir_end;
 
       new_bits = dbf->bucket->bucket_bits + 1;
+
       /* Allocate two new buckets */
       adr_0 = _gdbm_alloc (dbf, dbf->header->bucket_size);
-      switch (cache_lookup (dbf, adr_0, dbf->cache_mru, &newcache[0]))
-	{
-	case node_new:
-	  break;
-
-	case node_found:
-	  /* should not happen */
-	  GDBM_DEBUG (GDBM_DEBUG_ERR,
-		      "%s: bucket found where it should not",
-		      dbf->name);
-	  GDBM_SET_ERRNO (dbf, GDBM_BUCKET_CACHE_CORRUPTED, TRUE);
-	  return -1;
-
-	case node_failure:
-	  return -1;
-	}
+      if ((newcache[0] = cache_elem_new (dbf, adr_0)) == NULL)
+	return -1;
       _gdbm_new_bucket (dbf, newcache[0]->ca_bucket, new_bits);
 
       adr_1 = _gdbm_alloc (dbf, dbf->header->bucket_size);
-      switch (cache_lookup (dbf, adr_1, newcache[0], &newcache[1]))
-	{
-	case node_new:
-	  break;
-
-	case node_found:
-	  /* should not happen */
-	  GDBM_DEBUG (GDBM_DEBUG_ERR,
-		      "%s: bucket found where it should not",
-		      dbf->name);
-	  GDBM_SET_ERRNO (dbf, GDBM_BUCKET_CACHE_CORRUPTED, TRUE);
-	  return -1;
-
-	case node_failure:
-	  return -1;
-	}
+      if ((newcache[1] = cache_elem_new (dbf, adr_1)) == NULL)
+	return -1;
       _gdbm_new_bucket (dbf, newcache[1]->ca_bucket, new_bits);
 
       /* Double the directory size if necessary. */
@@ -388,6 +358,7 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 	  off_t       *new_dir;		/* Pointer to the new directory. */
 	  int          dir_size;	/* Size of the new directory. */
 	  off_t        dir_adr; 	/* Address of the new directory. */
+	  cache_elem  **new_cache;
 	  
 	  if (dbf->header->dir_size >= GDBM_MAX_DIR_HALF)
 	    {
@@ -407,10 +378,22 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 	      return -1;
 	    }
 
+	  new_cache = malloc (dir_size);
+	  if (new_cache == NULL)
+	    {
+	      GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
+	      free (new_dir);
+	      _gdbm_fatal (dbf, _("malloc error"));	      
+	      return -1;
+	    }
+	  
 	  for (index = 0; index < GDBM_DIR_COUNT (dbf); index++)
 	    {
 	      new_dir[2*index]   = dbf->dir[index];
 	      new_dir[2*index+1] = dbf->dir[index];
+
+	      new_cache[2*index] = dbf->cache[index];
+	      new_cache[2*index+1] = dbf->cache[index];
 	    }
 	  
 	  /* Update header. */
@@ -426,6 +409,8 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 	  dbf->bucket_dir *= 2;
 	  free (dbf->dir);
 	  dbf->dir = new_dir;
+	  free (dbf->cache);
+	  dbf->cache = new_cache;
 	}
 
       /* Copy all elements in dbf->bucket into the new buckets. */
@@ -508,7 +493,18 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 			 newcache[1]->ca_bucket->bucket_avail,
 			 &newcache[1]->ca_bucket->av_count, 
 			 dbf->coalesce_blocks);
-      lru_unlink_elem (dbf, newcache[0]);
+
+      if (cache_elem_insert (dbf, newcache[1]))
+	{
+	  cache_elem_free (dbf, newcache[0]);
+	  return -1;
+	}
+      
+      lru_link_elem (dbf, newcache[1], NULL);
+
+      if (cache_elem_insert (dbf, newcache[0]))
+	return -1;
+      
       lru_link_elem (dbf, newcache[0], NULL);
       set_cache_entry (dbf, newcache[0]);
     }
@@ -560,6 +556,16 @@ _gdbm_write_bucket (GDBM_FILE dbf, cache_elem *ca_entry)
 int
 _gdbm_cache_init (GDBM_FILE dbf, size_t size)
 {
+  if (!dbf->cache)
+    {
+      dbf->cache = calloc (GDBM_DIR_COUNT (dbf), sizeof (dbf->cache[0]));
+      if (!dbf->cache)
+	{
+	  GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
+	  return -1;
+	}
+    }
+  
   if (size == dbf->cache_size)
     return 0;
 
@@ -591,7 +597,8 @@ _gdbm_cache_free (GDBM_FILE dbf)
 
   while (dbf->cache_lru)
     cache_elem_free (dbf, dbf->cache_lru);
-  _gdbm_cache_tree_destroy (dbf->cache_tree);
+  free (dbf->cache);
+  dbf->cache = NULL;
   while ((elem = dbf->cache_avail) != NULL)
     {
       dbf->cache_avail = elem->ca_next;
@@ -612,69 +619,6 @@ _gdbm_cache_flush (GDBM_FILE dbf)
 	  if (_gdbm_write_bucket (dbf, elem))
 	    return -1;
 	}
-    }
-  return 0;
-}
-
-int
-_gdbm_fetch_data (GDBM_FILE dbf, off_t off, size_t size, void *buf)
-{
-  off_t bucket_adr;
-  off_t file_pos;
-  int rc;
-  cache_elem *elem;
-  char *dst = buf;
-
-  bucket_adr = (off / dbf->header->bucket_size)
-                 * dbf->header->bucket_size;
-  off -= bucket_adr;
-  while (size)
-    {
-      size_t nbytes;
-      
-      switch (cache_lookup (dbf, bucket_adr, dbf->cache_mru, &elem))
-	{
-	case node_found:
-	  break;
-	  
-	case node_new:
-	  /* Position the file pointer */
-	  file_pos = gdbm_file_seek (dbf, bucket_adr, SEEK_SET);
-	  if (file_pos != bucket_adr)
-	    {
-	      GDBM_SET_ERRNO (dbf, GDBM_FILE_SEEK_ERROR, TRUE);
-	      cache_elem_free (dbf, elem);
-	      _gdbm_fatal (dbf, _("lseek error"));
-	      return -1;
-	    }
-
-	  /* Read the bucket. */
-	  rc = _gdbm_full_read (dbf, elem->ca_bucket,
-				dbf->header->bucket_size);
-	  if (rc)
-	    {
-	      GDBM_DEBUG (GDBM_DEBUG_ERR,
-			  "%s: error reading data bucket: %s",
-			  dbf->name, gdbm_db_strerror (dbf));
-	      dbf->need_recovery = TRUE;
-	      cache_elem_free (dbf, elem);
-	      _gdbm_fatal (dbf, gdbm_db_strerror (dbf));
-	      return -1;
-	    }
-	  break;
-	  
-	case node_failure:
-	  return -1;
-	}
-
-      nbytes = dbf->header->bucket_size - off;
-      if (nbytes > size)
-	nbytes = size;
-      memcpy (dst, (char*) elem->ca_bucket + off, nbytes);
-      dst += nbytes;
-      size -= nbytes;
-      bucket_adr++;
-      off = 0;
     }
   return 0;
 }
