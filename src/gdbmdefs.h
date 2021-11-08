@@ -264,7 +264,7 @@ struct gdbm_file_info
   /* The bucket cache. */
   size_t cache_size;       /* Cache capacity */
   size_t cache_num;        /* Actual number of elements in cache */
-  /* Cache element index - parallel to dir. */
+  /* Cache hash table. */
   cache_elem **cache;  
   /* Cache elements are linked in a list sorted by relative access time */
   cache_elem *cache_mru;   /* Most recently used element - head of the list */

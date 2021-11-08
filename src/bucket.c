@@ -132,21 +132,54 @@ cache_elem_new (GDBM_FILE dbf, off_t adr)
   return elem;
 }
 
+size_t
+adrhash (off_t adr, size_t nbits)
+{
+  adr ^= adr >> (GDBM_HASH_BITS + 1 - nbits); 
+  return ((265443576910ul * adr) & 0xffffffff) >> (GDBM_HASH_BITS + 1 - nbits);
+}
+
 /* Frees element ELEM.  Unlinks it from the cache tree and LRU list. */
 static void
 cache_elem_free (GDBM_FILE dbf, cache_elem *elem)
 {
-  int i;
+  size_t i;
+  size_t h = adrhash (elem->ca_adr, dbf->header->dir_bits);
+  size_t hmax = GDBM_DIR_COUNT (dbf);
   
   lru_unlink_elem (dbf, elem);
-
-  for (i = 0; i < GDBM_DIR_COUNT (dbf); i++)
-    if (dbf->cache[i] == elem)
-      dbf->cache[i] = NULL;
 
   elem->ca_next = dbf->cache_avail;
   dbf->cache_avail = elem;
   dbf->cache_num--;
+
+  for (i = h; dbf->cache[i];)
+    {
+      if (dbf->cache[i] == elem)
+	break;
+      if (++i == hmax)
+	i = 0;
+      if (i == h)
+	return;
+    }
+
+  for (;;)
+    {
+      size_t j = i;
+      
+      dbf->cache[i] = NULL;
+
+      do
+	{
+	  if (++i >= hmax)
+	    i = 0;
+	  if (!dbf->cache[i])
+	    return;
+	  h = adrhash (dbf->cache[i]->ca_adr, dbf->header->dir_bits);
+	} while ((j < h && h <= i)
+		 || (i < j && j < h) || (h <= i && i < j));
+      dbf->cache[j] = dbf->cache[i];
+    }  
 }
 
 /* Free the least recently used cache entry. */
@@ -164,28 +197,54 @@ cache_lru_free (GDBM_FILE dbf)
 }
 
 static int
-cache_elem_insert (GDBM_FILE dbf, cache_elem *elem)
+cache_elem_lookup_slot (cache_elem **cache, size_t hmax, size_t nbits,
+			off_t adr, size_t *idx)
 {
-  off_t adr = elem->ca_adr;
-  int i;
+  size_t h = adrhash (adr, nbits);
+  size_t i;
   
-  if (dbf->cache_size != GDBM_CACHE_AUTO && dbf->cache_num == dbf->cache_size
-      && cache_lru_free (dbf))
+  for (i = h; cache[i];)
     {
-      cache_elem_free (dbf, elem);
-      return -1;
-    }
-       
-  for (i = 0; i < GDBM_DIR_COUNT (dbf); i++)
-    {
-      if (dbf->dir[i] == adr)
-	dbf->cache[i] = elem;
+      if (cache[i]->ca_adr == adr)
+	break;
+
+      if (++i == hmax)
+	i = 0;
+      if (i == h)
+	return -1;
     }
 
-  dbf->cache_num++;
+  *idx = i;
   return 0;
 }
 
+static cache_elem **
+cache_rehash (GDBM_FILE dbf, size_t new_size, size_t new_bits)
+{
+  cache_elem **new_cache;
+  size_t hmax = GDBM_DIR_COUNT (dbf);
+  size_t i;
+  
+  new_cache = calloc (new_size, sizeof (new_cache[0]));
+  if (!new_cache)
+    return NULL;
+
+  for (i = 0; i < hmax; i++)
+    {
+      if (dbf->cache[i])
+	{
+	  size_t h;
+	  
+	  if (cache_elem_lookup_slot (new_cache, new_size, new_bits,
+				      dbf->cache[i]->ca_adr, &h)
+	      || new_cache[h])
+	    abort ();// shouldn't happen
+	  new_cache[h] = dbf->cache[i];
+	}
+    }
+  return new_cache;
+}
+      
 enum
   {
     cache_found,
@@ -194,25 +253,33 @@ enum
   };
 
 static int
-cache_lookup (GDBM_FILE dbf, int diridx, cache_elem *ref, cache_elem **ret_elem)
+cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
 {
   int rc;
   cache_elem *elem;
+  size_t h;
   
   dbf->cache_access_count++;
-  if ((elem = dbf->cache[diridx]) != NULL)
+
+  if (cache_elem_lookup_slot (dbf->cache, GDBM_DIR_COUNT (dbf),
+			      dbf->header->dir_bits, adr, &h))
+    abort (); // shouldn't happen
+
+  if ((elem = dbf->cache[h]) != NULL)
     {
       elem->ca_hits++;
       dbf->cache_hits++;
       lru_unlink_elem (dbf, elem);
       rc = cache_found;
     }
-  else if ((elem = cache_elem_new (dbf, dbf->dir[diridx])) == NULL)
-    return cache_failure;
-  else if (cache_elem_insert (dbf, elem))
+  else if ((elem = cache_elem_new (dbf, adr)) == NULL)
     return cache_failure;
   else
-    rc = cache_new;
+    {
+      dbf->cache[h] = elem;
+      dbf->cache_num++;
+      rc = cache_new;
+    }
   
   lru_link_elem (dbf, elem, ref);
   *ret_elem = elem;
@@ -249,7 +316,7 @@ _gdbm_get_bucket (GDBM_FILE dbf, int dir_index)
   if (dbf->cache_entry && dbf->cache_entry->ca_adr == bucket_adr)
     return 0;
   
-  switch (cache_lookup (dbf, dir_index, NULL, &elem))
+  switch (cache_lookup (dbf, bucket_adr, NULL, &elem))
     {
     case cache_found:
       break;
@@ -343,13 +410,41 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 
       /* Allocate two new buckets */
       adr_0 = _gdbm_alloc (dbf, dbf->header->bucket_size);
-      if ((newcache[0] = cache_elem_new (dbf, adr_0)) == NULL)
-	return -1;
+      switch (cache_lookup (dbf, adr_0, dbf->cache_mru, &newcache[0]))
+	{
+	case cache_new:
+	  break;
+
+	case cache_found:
+	  /* should not happen */
+	  GDBM_DEBUG (GDBM_DEBUG_ERR,
+		      "%s: bucket found where it should not",
+		      dbf->name);
+	  GDBM_SET_ERRNO (dbf, GDBM_BUCKET_CACHE_CORRUPTED, TRUE);
+	  return -1;
+
+	case cache_failure:
+	  return -1;
+	}
       _gdbm_new_bucket (dbf, newcache[0]->ca_bucket, new_bits);
 
       adr_1 = _gdbm_alloc (dbf, dbf->header->bucket_size);
-      if ((newcache[1] = cache_elem_new (dbf, adr_1)) == NULL)
-	return -1;
+      switch (cache_lookup (dbf, adr_1, newcache[0], &newcache[1]))
+	{
+	case cache_new:
+	  break;
+
+	case cache_found:
+	  /* should not happen */
+	  GDBM_DEBUG (GDBM_DEBUG_ERR,
+		      "%s: bucket found where it should not",
+		      dbf->name);
+	  GDBM_SET_ERRNO (dbf, GDBM_BUCKET_CACHE_CORRUPTED, TRUE);
+	  return -1;
+
+	case cache_failure:
+	  return -1;
+	}
       _gdbm_new_bucket (dbf, newcache[1]->ca_bucket, new_bits);
 
       /* Double the directory size if necessary. */
@@ -378,12 +473,12 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 	      return -1;
 	    }
 
-	  new_cache = malloc (dir_size);
-	  if (new_cache == NULL)
+	  new_cache = cache_rehash (dbf, dir_size, new_bits);
+	  if (!new_cache)
 	    {
-	      GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
 	      free (new_dir);
-	      _gdbm_fatal (dbf, _("malloc error"));	      
+	      GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
+	      _gdbm_fatal (dbf, _("malloc error"));
 	      return -1;
 	    }
 	  
@@ -391,9 +486,6 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 	    {
 	      new_dir[2*index]   = dbf->dir[index];
 	      new_dir[2*index+1] = dbf->dir[index];
-
-	      new_cache[2*index] = dbf->cache[index];
-	      new_cache[2*index+1] = dbf->cache[index];
 	    }
 	  
 	  /* Update header. */
@@ -494,17 +586,7 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
 			 &newcache[1]->ca_bucket->av_count, 
 			 dbf->coalesce_blocks);
 
-      if (cache_elem_insert (dbf, newcache[1]))
-	{
-	  cache_elem_free (dbf, newcache[0]);
-	  return -1;
-	}
-      
-      lru_link_elem (dbf, newcache[1], NULL);
-
-      if (cache_elem_insert (dbf, newcache[0]))
-	return -1;
-      
+      lru_unlink_elem (dbf, newcache[0]);
       lru_link_elem (dbf, newcache[0], NULL);
       set_cache_entry (dbf, newcache[0]);
     }
@@ -552,10 +634,18 @@ _gdbm_write_bucket (GDBM_FILE dbf, cache_elem *ca_entry)
 
 /* Cache manipulation functions. */
 
+
+
 /* Initialize the bucket cache. */
 int
 _gdbm_cache_init (GDBM_FILE dbf, size_t size)
 {
+  if (size != GDBM_CACHE_AUTO && size > GDBM_DIR_COUNT (dbf))
+    {
+      GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+      return -1;
+    }
+
   if (!dbf->cache)
     {
       dbf->cache = calloc (GDBM_DIR_COUNT (dbf), sizeof (dbf->cache[0]));
@@ -565,9 +655,6 @@ _gdbm_cache_init (GDBM_FILE dbf, size_t size)
 	  return -1;
 	}
     }
-  
-  if (size == dbf->cache_size)
-    return 0;
 
   if (size != GDBM_CACHE_AUTO)
     {
