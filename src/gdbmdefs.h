@@ -186,10 +186,11 @@ struct cache_elem
   char            ca_changed;  /* Data in the bucket changed. */
   data_cache_elem ca_data;     /* Cached datum */
   cache_elem      *ca_prev,    /* Previous element in LRU list. */
-                  *ca_next;    /* Next elements in LRU list.
+                  *ca_next,    /* Next elements in LRU list.
 				  If the item is in cache_avail list, only
 				  ca_next is used.  It points to the next
 			          available element. */
+                  *ca_coll;    /* Next element in a collision sequence */
   size_t          ca_hits;     /* Number of times this element was requested */
   hash_bucket     ca_bucket[1];/* Associated  bucket (dbf->header->bucket_size
 				  bytes). */
