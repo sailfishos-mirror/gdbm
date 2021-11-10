@@ -182,16 +182,23 @@ static cache_elem **
 cache_elem_lookup_slot (cache_elem **cache, size_t nbits, off_t adr)
 {
   size_t h = adrhash (adr, nbits);
-  cache_elem **pp;
-  
-  pp = cache + h;
-  while (*pp)
+
+  if (cache[h])
     {
-      if ((*pp)->ca_adr == adr)
-	break;
-      pp = &(*pp)->ca_coll;
+      if (cache[h]->ca_adr != adr)
+	{
+	  cache_elem *prev = cache[h], *p = prev->ca_coll;
+	  while (p)
+	    {
+	      if (p->ca_adr == adr)
+		break;
+	      prev = p;
+	      p = prev->ca_coll;
+	    }
+	  return &prev->ca_coll;
+	}
     }
-  return pp;
+  return &cache[h];
 }
 
 static void
