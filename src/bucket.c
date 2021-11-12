@@ -65,7 +65,7 @@ adrhash (off_t adr, size_t nbits)
  * Never returns NULL.
  */
 static cache_elem **
-cache_elem_lookup_slot (GDBM_FILE dbf, off_t adr)
+cache_tab_lookup_slot (GDBM_FILE dbf, off_t adr)
 {
   cache_elem **cache = dbf->cache;
   size_t h = adrhash (adr, dbf->cache_bits);
@@ -210,6 +210,79 @@ cache_lru_free (GDBM_FILE dbf)
   return 0;
 }
 
+/*
+ * Round up V to the next highest power of 2 and compute log2 of
+ * it using De Brujin sequences.
+ * See http://supertech.csail.mit.edu/papers/debruijn.pdf
+ */
+static unsigned
+log2i (unsigned v)
+{
+  static const int dbp[32] =
+    {
+      0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 
+      31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+    };
+
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return dbp[(uint32_t)(v * 0x077CB531U) >> 27];
+}
+
+static int
+cache_tab_resize (GDBM_FILE dbf, int bits)
+{
+  size_t size = 1 << bits;
+
+  if (!dbf->cache || size != dbf->cache_size)
+    {
+      size_t n = size * sizeof (dbf->cache[0]);
+      cache_elem **p, *elem;
+      
+      /* Flush existing cache */
+      if (_gdbm_cache_flush (dbf))
+	return -1;
+
+      /* Reallocate it */
+      p = realloc (dbf->cache, n);
+      if (!p)
+	{
+	  GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
+	  return -1;
+	}
+      dbf->cache = p;
+      dbf->cache_size = size;
+      dbf->cache_bits = bits;
+
+      memset (dbf->cache, 0, n);
+
+      /* Rehash and free surplus elements */
+      for (elem = dbf->cache_lru; elem; )
+	{
+	  cache_elem *prev = elem->ca_prev;
+	  elem->ca_coll = NULL;
+	  if (size < dbf->cache_num)
+	    {
+	      cache_elem_free (dbf, elem);
+	    }
+	  else
+	    {
+	      p = cache_tab_lookup_slot (dbf, elem->ca_adr);
+	      if (*p)
+		abort ();// shouldn't happen
+	      *p = elem;
+	    }
+	  elem = prev;
+	}
+    }
+  return 0;
+}
+
 enum
   {
     cache_found,
@@ -225,7 +298,7 @@ cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
   
   dbf->cache_access_count++;
 
-  elp = cache_elem_lookup_slot (dbf, adr);
+  elp = cache_tab_lookup_slot (dbf, adr);
   
   if (*elp != NULL)
     {
@@ -239,22 +312,33 @@ cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
     return cache_failure;
   else
     {
-      if (dbf->cache_size != GDBM_CACHE_AUTO
-	  && dbf->cache_num == dbf->cache_size
-	  && cache_lru_free (dbf))
+      rc = cache_new;
+
+      if (dbf->cache_num == dbf->cache_size)
 	{
-	  cache_elem_free (dbf, elem);
-	  rc = cache_failure;
+	  if (dbf->cache_auto && dbf->cache_bits < dbf->header->dir_bits)
+	    {
+	      if (cache_tab_resize (dbf, dbf->cache_bits + 1) == 0)
+		/* Table has been reallocated, recompute the slot. */
+		elp = cache_tab_lookup_slot (dbf, adr);
+	      else
+		rc = cache_failure;
+	    }
+	  else if (cache_lru_free (dbf))
+	    {
+	      rc = cache_failure;
+	    }
 	}
-      else
+      
+      if (rc == cache_new)
 	{
 	  *elp = elem;
 	  dbf->cache_num++;
-	  rc = cache_new;
 	}
     }
   lru_link_elem (dbf, elem, ref);
-  *ret_elem = elem;
+  if (rc != cache_failure)
+    *ret_elem = elem;
   return rc;
 }
 
@@ -592,31 +676,9 @@ _gdbm_write_bucket (GDBM_FILE dbf, cache_elem *ca_entry)
   return 0;
 }
 
-/* Cache manipulation functions. */
+/* Cache manipulation interface functions. */
 
-/*
- * Round up V to the next highest power of 2 and compute log2 of
- * it using De Brujin sequences.
- * See http://supertech.csail.mit.edu/papers/debruijn.pdf
- */
-static unsigned
-log2i (unsigned v)
-{
-  static const int dbp[32] =
-    {
-      0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 
-      31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
-    };
-
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v |= v >> 8;
-  v |= v >> 16;
-  v++;
-  return dbp[(uint32_t)(v * 0x077CB531U) >> 27];
-}
+#define INIT_CACHE_BITS 9
 
 /* Initialize the bucket cache. */
 int
@@ -628,8 +690,7 @@ _gdbm_cache_init (GDBM_FILE dbf, size_t size)
   if (size == GDBM_CACHE_AUTO)
     {
       cache_auto = TRUE;
-      size = GDBM_DIR_COUNT (dbf);
-      bits = dbf->header->dir_bits;
+      bits = dbf->cache ? dbf->cache_bits : INIT_CACHE_BITS;
     }
   else if (size > GDBM_DIR_COUNT (dbf) ||
 	   size > SIZE_T_MAX / sizeof (dbf->cache[0]))
@@ -641,55 +702,11 @@ _gdbm_cache_init (GDBM_FILE dbf, size_t size)
     {
       cache_auto = FALSE;
       bits = log2i (size < 4 ? 4 : size);
-      size = 1 << bits;
-    }
-  
-  if (!dbf->cache || size != dbf->cache_size)
-    {
-      size_t n = size * sizeof (dbf->cache[0]);
-      cache_elem **p, *elem;
-      
-      /* Flush existing cache */
-      if (_gdbm_cache_flush (dbf))
-	return -1;
-
-      /* Reallocate it */
-      p = realloc (dbf->cache, n);
-      if (!p)
-	{
-	  GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
-	  return -1;
-	}
-      dbf->cache = p;
-      dbf->cache_size = size;
-      dbf->cache_bits = bits;
-      dbf->cache_auto = cache_auto;
-
-      memset (dbf->cache, 0, n);
-
-      for (elem = dbf->cache_lru; elem; elem = elem->ca_prev)
-	elem->ca_coll = NULL;
-
-      /* Rehash and free surplus elements */
-      for (elem = dbf->cache_lru; elem; )
-	{
-	  cache_elem *prev = elem->ca_prev;
-	  if (!cache_auto && size < dbf->cache_num)
-	    {
-	      cache_elem_free (dbf, elem);
-	    }
-	  else
-	    {
-	      p = cache_elem_lookup_slot (dbf, elem->ca_adr);
-	      if (*p)
-		abort ();// shouldn't happen
-	      *p = elem;
-	    }
-	  elem = prev;
-	}
     }
 
-  return 0;
+  dbf->cache_auto = cache_auto;
+
+  return cache_tab_resize (dbf, bits);
 }
 
 /* Free the bucket cache */
