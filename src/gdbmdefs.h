@@ -231,6 +231,9 @@ struct gdbm_file_info
   /* Last error was fatal, the database needs recovery */
   unsigned need_recovery :1;
 
+  /* Automatic bucket cache size */
+  unsigned cache_auto :1;
+  
   /* Last GDBM error number */
   gdbm_error last_error;
   /* Last system error number */
@@ -263,10 +266,12 @@ struct gdbm_file_info
   off_t *dir;
 
   /* The bucket cache. */
-  size_t cache_size;       /* Cache capacity */
+  int cache_bits;          /* Address bits used for compting bucket hash */
+  size_t cache_size;       /* Cache capacity: 2^cache_bits */
   size_t cache_num;        /* Actual number of elements in cache */
   /* Cache hash table. */
-  cache_elem **cache;  
+  cache_elem **cache;
+  
   /* Cache elements are linked in a list sorted by relative access time */
   cache_elem *cache_mru;   /* Most recently used element - head of the list */
   cache_elem *cache_lru;   /* Last recently used element - tail of the list */ 

@@ -74,6 +74,32 @@ setopt_gdbm_getcachesize (GDBM_FILE dbf, void *optval, int optlen)
   return 0;
 }
 
+static int
+setopt_gdbm_setcacheauto (GDBM_FILE dbf, void *optval, int optlen)
+{
+  int n;
+
+  if ((n = getbool (optval, optlen)) == -1)
+    {     
+      GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+      return -1;
+    }
+  dbf->cache_auto = n;
+  return 0;
+}
+
+static int
+setopt_gdbm_getcacheauto (GDBM_FILE dbf, void *optval, int optlen)
+{
+  if (!optval || optlen != sizeof (int))
+    {
+      GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+      return -1;
+    }
+  *(int*) optval = !!dbf->cache_auto;
+  return 0;
+}
+
 /* Obsolete form of GDBM_SETSYNCMODE. */
 static int
 setopt_gdbm_fastmode (GDBM_FILE dbf, void *optval, int optlen)
@@ -322,6 +348,8 @@ static setopt_handler setopt_handler_tab[] = {
   [GDBM_GETFLAGS]        = setopt_gdbm_getflags,
   [GDBM_GETDBNAME]       = setopt_gdbm_getdbname,
   [GDBM_GETBLOCKSIZE]    = setopt_gdbm_getblocksize,
+  [GDBM_GETCACHEAUTO]    = setopt_gdbm_getcacheauto,
+  [GDBM_SETCACHEAUTO]    = setopt_gdbm_setcacheauto,
 };
   
 int
