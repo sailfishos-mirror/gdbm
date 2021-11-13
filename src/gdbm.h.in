@@ -89,8 +89,8 @@ extern "C" {
 # define GDBM_GETDBNAME       15 /* Return database file name */
 # define GDBM_GETBLOCKSIZE    16 /* Return block size */
 
-# define GDBM_GETCACHEAUTO    17 /* Get the value of cache auto-adgustment */
-# define GDBM_SETCACHEAUTO    18 /* Set the value of cache auto-adgustment */
+# define GDBM_GETCACHEAUTO    17 /* Get the value of cache auto-adjustment */
+# define GDBM_SETCACHEAUTO    18 /* Set the value of cache auto-adjustment */
     
 # define GDBM_CACHE_AUTO      0
 

@@ -252,7 +252,7 @@ cache_tab_resize (GDBM_FILE dbf, int bits)
       p = realloc (dbf->cache, n);
       if (!p)
 	{
-	  GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, TRUE);
+	  GDBM_SET_ERRNO (dbf, GDBM_MALLOC_ERROR, FALSE);
 	  return -1;
 	}
       dbf->cache = p;
@@ -316,13 +316,11 @@ cache_lookup (GDBM_FILE dbf, off_t adr, cache_elem *ref, cache_elem **ret_elem)
 
       if (dbf->cache_num == dbf->cache_size)
 	{
-	  if (dbf->cache_auto && dbf->cache_bits < dbf->header->dir_bits)
+	  if (dbf->cache_auto && dbf->cache_bits < dbf->header->dir_bits &&
+	      cache_tab_resize (dbf, dbf->cache_bits + 1) == 0)
 	    {
-	      if (cache_tab_resize (dbf, dbf->cache_bits + 1) == 0)
-		/* Table has been reallocated, recompute the slot. */
-		elp = cache_tab_lookup_slot (dbf, adr);
-	      else
-		rc = cache_failure;
+	      /* Table has been reallocated, recompute the slot. */
+	      elp = cache_tab_lookup_slot (dbf, adr);
 	    }
 	  else if (cache_lru_free (dbf))
 	    {
