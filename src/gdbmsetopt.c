@@ -280,14 +280,24 @@ setopt_gdbm_getflags (GDBM_FILE dbf, void *optval, int optlen)
   else
     {
       int flags = dbf->read_write;
+
       if (!dbf->fast_write)
 	flags |= GDBM_SYNC;
+      
       if (!dbf->file_locking)
 	flags |= GDBM_NOLOCK;
+
       if (!dbf->memory_mapping)
 	flags |= GDBM_NOMMAP;
       else if (dbf->mmap_preread)
 	flags |= GDBM_PREREAD;
+
+      if (dbf->cloexec)
+	flags |= GDBM_CLOEXEC;
+      
+      if (dbf->header->header_magic == GDBM_NUMSYNC_MAGIC)
+	flags |= GDBM_NUMSYNC;
+      
       *(int*) optval = flags;
     }
   return 0;
@@ -326,6 +336,53 @@ setopt_gdbm_getblocksize (GDBM_FILE dbf, void *optval, int optlen)
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
 }
+
+static int
+setopt_gdbm_getdbformat (GDBM_FILE dbf, void *optval, int optlen)
+{
+  if (optval && optlen == sizeof (int))
+    {
+      switch (dbf->header->header_magic)
+	{
+	case GDBM_OMAGIC:
+	case GDBM_MAGIC:
+	  *(int*)optval = 0;
+	  break;
+      
+	case GDBM_NUMSYNC_MAGIC:
+	  *(int*)optval = GDBM_NUMSYNC;
+	}
+    }
+  
+  GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+  return -1;
+}
+
+static int
+setopt_gdbm_getdirdepth (GDBM_FILE dbf, void *optval, int optlen)
+{
+  if (optval && optlen == sizeof (int))
+    {
+      *(int*) optval = dbf->header->dir_bits;
+      return 0;
+    }
+  
+  GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+  return -1;
+}
+
+static int
+setopt_gdbm_getbucketsize (GDBM_FILE dbf, void *optval, int optlen)
+{
+  if (optval && optlen == sizeof (int))
+    {
+      *(int*) optval = dbf->header->bucket_elems;
+      return 0;
+    }
+  
+  GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+  return -1;
+}
 
 typedef int (*setopt_handler) (GDBM_FILE, void *, int);
 
@@ -348,6 +405,9 @@ static setopt_handler setopt_handler_tab[] = {
   [GDBM_GETFLAGS]        = setopt_gdbm_getflags,
   [GDBM_GETDBNAME]       = setopt_gdbm_getdbname,
   [GDBM_GETBLOCKSIZE]    = setopt_gdbm_getblocksize,
+  [GDBM_GETDBFORMAT]     = setopt_gdbm_getdbformat,
+  [GDBM_GETDIRDEPTH]     = setopt_gdbm_getdirdepth,
+  [GDBM_GETBUCKETSIZE]   = setopt_gdbm_getbucketsize,
   [GDBM_GETCACHEAUTO]    = setopt_gdbm_getcacheauto,
   [GDBM_SETCACHEAUTO]    = setopt_gdbm_setcacheauto,
 };
