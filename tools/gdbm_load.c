@@ -18,6 +18,7 @@
 # include "gdbm.h"
 # include "gdbmapp.h"
 # include "gdbmdefs.h"
+# include <limits.h>
 # include <pwd.h>
 # include <grp.h>
 
@@ -66,27 +67,6 @@ set_meta_info (GDBM_FILE dbf)
   return 0;
 }
 
-static int
-get_int (const char *arg)
-{
-  char *p;
-  long n;
- 
-  errno = 0;
-  n = strtol (arg, &p, 0);
-  if (*p)
-    {
-      error (_("invalid number: %s"), arg);
-      exit (EXIT_USAGE);
-    }
-  if (errno)
-    {
-      error (_("invalid number: %s: %s"), arg, strerror (errno));
-      exit (EXIT_USAGE);
-    }
-  return n;
-}
-
 int
 main (int argc, char **argv)
 {
@@ -97,7 +77,7 @@ main (int argc, char **argv)
   unsigned long err_line, n;
   char *end;
   int oflags = GDBM_NEWDB|GDBM_NOMMAP;
-  int cache_size = 0;
+  size_t cache_size = 0;
   int block_size = 0;
   
 #ifdef HAVE_SETLOCALE
@@ -115,11 +95,23 @@ main (int argc, char **argv)
     switch (opt)
       {
       case 'b':
-	block_size = get_int (optarg);
+	{
+	  size_t n;
+	  if (strtosize (optarg, &n) || n > INT_MAX)
+	    {
+	      error (_("invalid number: %s"), optarg);
+	      exit (EXIT_USAGE);
+	    }
+	  block_size = n;
+	}
 	break;
 	
       case 'c':
-	cache_size = get_int (optarg);
+	if (strtosize (optarg, &cache_size))
+	  {
+	    error (_("invalid number: %s"), optarg);
+	    exit (EXIT_USAGE);
+	  }	  
 	break;
 
       case 'm':

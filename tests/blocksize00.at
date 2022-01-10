@@ -20,17 +20,17 @@ AT_KEYWORDS([gdbm create blocksize blocksize00])
 AT_CHECK([
 AT_SORT_PREREQ
 num2word 1:1000 > input
-gtload -blocksize=518 -clear -verbose test.db < input
+gtload --block-size=518 -Ogetblocksize --clear test.db < input
 gtdump test.db | sort -k1n,2n > output
 cmp -s input output || diff -u input output
 
-gtload -blocksize=1025 -clear -verbose test.db < input
+gtload --block-size=1025 -Ogetblocksize --clear test.db < input
 gtdump test.db | sort -k1n,2n > output
 cmp -s input output || diff -u input output
 ],
 [0],
-[blocksize=1024
-blocksize=2048
+[GDBM_GETBLOCKSIZE: 1024 # database block size
+GDBM_GETBLOCKSIZE: 2048 # database block size
 ])
 
 AT_CLEANUP

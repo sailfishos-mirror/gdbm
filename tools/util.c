@@ -128,4 +128,104 @@ getyn (const char *prompt, ...)
   va_end (ap);
   return rc;
 }
-	
+
+int
+strtosize (char const *arg, size_t *psize)
+{
+  char *p;
+  unsigned long n;
+  size_t size;
+
+  errno = 0;
+  n = strtoul (arg, &p, 10);
+  if (errno)
+    goto badsize;
+  size = n;
+  if (*p)
+    {
+#     define XB()							\
+      if (SIZE_T_MAX / size < 1024)					\
+	goto badsize;							\
+      size <<= 10;
+
+      switch (*p)
+	{
+	case 'e':
+	case 'E':
+	  {
+	    size_t m = 1;
+
+	    errno = 0;
+	    n = strtoul (p + 1, &p, 10);
+	    if (errno || *p)
+	      goto badsize;
+	    while (n--)
+	      {
+		if (SIZE_T_MAX / m < 10)
+		  goto badsize;
+		m *= 10;
+	      }
+	    if (SIZE_T_MAX / size < m)
+	      goto badsize;
+	    size *= m;
+	  }
+	  break;
+
+	case 'g':
+	case 'G':
+	  XB ();
+	  /* fall through */
+	case 'm':
+	case 'M':
+	  XB ();
+	  /* fall through */
+	case 'k':
+	case 'K':
+	  XB ();
+	  if (p[1] == 0)
+	    break;
+	  /* fall through */
+	default:
+	badsize:
+	  return -1;
+	}
+    }
+  *psize = size;
+  return 0;
+}
+
+int
+gdbm_symmap_string_to_int (char const *str, struct gdbm_symmap *map, int flags)
+{
+  int i;
+# define PREFIX "GDBM_"
+  static char prefix[] = PREFIX;
+  static int prefix_len = sizeof (PREFIX) - 1;
+
+  if (flags & GDBM_SYMMAP_GDBM)
+    {
+      if (((flags & GDBM_SYMMAP_CI) ? strncasecmp : strncmp)
+	  (str, prefix, prefix_len) == 0)
+	str += prefix_len;
+    }
+
+  for (i = 0; map[i].sym; i++)
+    {
+      if (((flags & GDBM_SYMMAP_CI) ? strcasecmp : strcmp)
+	  (map[i].sym + ((flags & GDBM_SYMMAP_GDBM) ? prefix_len : 0), str) == 0)
+	return map[i].tok;
+    }
+
+  return -1;
+}
+
+char const *
+gdbm_symmap_int_to_string (int n, struct gdbm_symmap *map)
+{
+  int i;
+
+  for (i = 0; map[i].sym; i++)
+    if (map[i].tok == n)
+      return map[i].sym;
+  return NULL;
+}

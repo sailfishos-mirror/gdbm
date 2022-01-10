@@ -19,73 +19,74 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "gdbm.h"
-#include "progname.h"
+#include <gdbm.h>
+#include <gdbmapp.h>
+#include <gdbmtest.h>
+
+char *parseopt_program_doc = "delete keys from GDBM database";
+char *parseopt_program_args = "DBNAME KEY [KEY...]";
+
+static struct gdbm_option gtdel_options[] = {
+  { '0', "null", NULL, "include trailing null to key length" },
+  { 0 }
+};
+
+struct gtdel_params
+{
+  int null_opt;
+};
+
+#define GTDEL_PARAMS_STATIC_INITIALIZER {}
+
+static int
+gtdel_option_parser (int key, char *arg, void *closure,
+		     struct gdbm_test_config *oc)
+{
+  struct gtdel_params *p = closure;
+  
+  switch (key)
+    {
+    case '0':
+      p->null_opt = 1;
+      break;
+      
+    default:
+      return 1;
+    }
+  return 0;
+}      
 
 int
 main (int argc, char **argv)
 {
-  const char *progname = canonical_progname (argv[0]);
-  const char *dbname;
-  datum key;
-  int flags = 0;
   GDBM_FILE dbf;
-  int data_z = 0;
+  datum key;
   int rc = 0;
+  struct gtdel_params params = GTDEL_PARAMS_STATIC_INITIALIZER;
   
-  while (--argc)
-    {
-      char *arg = *++argv;
+  dbf = gdbm_test_init (argc, argv,
+			GDBM_TESTOPT_DATABASE, GDBM_TESTDB_ARG,
+			GDBM_TESTOPT_OPEN_FLAGS, GDBM_WRITER,
+			GDBM_TESTOPT_OPTIONS, gtdel_options,
+			GDBM_TESTOPT_PARSEOPT, gtdel_option_parser, &params,
+			GDBM_TESTOPT_RETURN_ARGC, &argc,
+			GDBM_TESTOPT_RETURN_ARGV, &argv,
+			GDBM_TESTOPT_EXIT_ERROR, 1,
+			GDBM_TESTOPT_EXIT_USAGE, 1,//FIXME
+			GDBM_TESTOPT_END);
 
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-null] [-nolock] [-nommap] [-sync] DBFILE KEY [KEY...]\n",
-		  progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-null") == 0)
-	data_z = 1;
-      else if (strcmp (arg, "-nolock") == 0)
-	flags |= GDBM_NOLOCK;
-      else if (strcmp (arg, "-nommap") == 0)
-	flags |= GDBM_NOMMAP;
-      else if (strcmp (arg, "-sync") == 0)
-	flags |= GDBM_SYNC;
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
-  if (argc < 2)
+  if (argc < 1)
     {
-      fprintf (stderr, "%s: wrong arguments\n", progname);
-      exit (1);
-    }
-  dbname = *argv;
-  
-  dbf = gdbm_open (dbname, 0, GDBM_WRITER|flags, 0, NULL);
-  if (!dbf)
-    {
-      fprintf (stderr, "gdbm_open failed: %s\n", gdbm_strerror (gdbm_errno));
+      error ("required arguments missing");
       exit (1);
     }
 
-  while (--argc)
+  while (argc--)
     {
-      char *arg = *++argv;
+      char *arg = *argv++;
 
       key.dptr = arg;
-      key.dsize = strlen (arg) + !!data_z;
+      key.dsize = strlen (arg) + !!params.null_opt;
 
       if (gdbm_delete(dbf, key))
 	{

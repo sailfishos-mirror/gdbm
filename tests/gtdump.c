@@ -19,66 +19,60 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "gdbm.h"
-#include "progname.h"
+#include <gdbm.h>
+#include <gdbmapp.h>
+#include <gdbmtest.h>
+
+char *parseopt_program_doc = "dump conents of a GDBM database";
+char *parseopt_program_args = "DBNAME";
+
+static struct gdbm_option gtdump_options[] = {
+  { 'd', "delimiter", "CHAR", "CHAR delimits key and value (default: horizontal tab)" },
+  { 0 }
+};
+
+struct gtdump_params
+{
+  int delimiter;
+};
+
+#define GTDUMP_PARAMS_STATIC_INITIALIZER \
+  {					 \
+    .delimiter = '\t',			 \
+  }
+
+static int
+gtdump_option_parser (int key, char *arg, void *closure,
+		      struct gdbm_test_config *oc)
+{
+  struct gtdump_params *p = closure;
+  
+  switch (key)
+    {
+    case 'd':
+      p->delimiter = arg[0];
+      break;
+
+    default:
+      return 1;
+    }
+  return 0;
+}      
 
 int
 main (int argc, char **argv)
 {
-  const char *progname = canonical_progname (argv[0]);
-  const char *dbname;
+  GDBM_FILE dbf;
+  struct gtdump_params params = GTDUMP_PARAMS_STATIC_INITIALIZER;
   datum key;
   datum data;
-  int flags = 0;
-  GDBM_FILE dbf;
-  int delim = '\t';
   
-  while (--argc)
-    {
-      char *arg = *++argv;
-
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-nolock] [-nommap] [-delim=CHR] DBFILE\n",
-		  progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-nolock") == 0)
-	flags |= GDBM_NOLOCK;
-      else if (strcmp (arg, "-nommap") == 0)
-	flags |= GDBM_NOMMAP;
-      else if (strcmp (arg, "-sync") == 0)
-	flags |= GDBM_SYNC;
-      else if (strncmp (arg, "-delim=", 7) == 0)
-	delim = arg[7];
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
-  if (argc != 1)
-    {
-      fprintf (stderr, "%s: wrong arguments\n", progname);
-      exit (1);
-    }
-  dbname = *argv;
-  
-  dbf = gdbm_open (dbname, 0, GDBM_READER|flags, 00664, NULL);
-  if (!dbf)
-    {
-      fprintf (stderr, "gdbm_open failed: %s\n", gdbm_strerror (gdbm_errno));
-      exit (1);
-    }
+  dbf = gdbm_test_init (argc, argv,
+			GDBM_TESTOPT_DATABASE, GDBM_TESTDB_ARG,
+			GDBM_TESTOPT_OPTIONS, gtdump_options,
+			GDBM_TESTOPT_PARSEOPT, gtdump_option_parser, &params,
+			GDBM_TESTOPT_EXIT_ERROR, 1,
+			GDBM_TESTOPT_END);
 
   key = gdbm_firstkey (dbf);
   while (key.dptr)
@@ -88,12 +82,12 @@ main (int argc, char **argv)
       
       for (i = 0; i < key.dsize && key.dptr[i]; i++)
 	{
-	  if (key.dptr[i] == delim || key.dptr[i] == '\\')
+	  if (key.dptr[i] == params.delimiter || key.dptr[i] == '\\')
 	    fputc ('\\', stdout);
 	  fputc (key.dptr[i], stdout);
 	}
 
-      fputc (delim, stdout);
+      fputc (params.delimiter, stdout);
 
       data = gdbm_fetch (dbf, key);
       i = data.dsize;
@@ -112,14 +106,13 @@ main (int argc, char **argv)
 
   if (gdbm_errno != GDBM_ITEM_NOT_FOUND)
     {
-      fprintf (stderr, "unexpected error: %s\n", gdbm_strerror (gdbm_errno));
+      error ("unexpected error: %s", gdbm_strerror (gdbm_errno));
       exit (1);
     }
   
   if (gdbm_close (dbf))
     {
-      fprintf (stderr, "gdbm_close: %s; %s\n", gdbm_strerror (gdbm_errno),
-	       strerror (errno));
+      gdbm_perror ("gdbm_close");
       exit (3);
     }
   exit (0);

@@ -36,6 +36,8 @@ void *ezalloc (size_t size);
 char *estrdup (const char *str);
 void *e2nrealloc (void *p, size_t *pn, size_t s);
 
+int strtosize (char const *arg, size_t *psize);
+
 #define PARSEOPT_HIDDEN 0x01
 #define PARSEOPT_ALIAS  0x02
 
@@ -82,4 +84,23 @@ int wordwrap_at_bol (WORDWRAP_FILE wf);
 int wordwrap_at_eol (WORDWRAP_FILE wf);
 void wordwrap_word_start (WORDWRAP_FILE wf);
 void wordwrap_word_end (WORDWRAP_FILE wf);
+
+struct gdbm_symmap
+{
+  char *sym;
+  int tok;
+};
+
+#define GDBM_SYMMAP_NONE  0
+#define GDBM_SYMMAP_CI    0x1 /* Case-insensitive comparison */
+#define GDBM_SYMMAP_GDBM  0x2 /* Ignore optional GDBM_ prefix */
+#define GDBM_SYMMAP_DFL (GDBM_SYMMAP_CI|GDBM_SYMMAP_GDBM)
+
+int gdbm_symmap_string_to_int (char const *str, struct gdbm_symmap *map,
+			       int flags);
+char const *gdbm_symmap_int_to_string (int n, struct gdbm_symmap *map);
+
+
+
+
 

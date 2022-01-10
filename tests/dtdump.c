@@ -21,6 +21,8 @@
 #include "dbm.h"
 #include "progname.h"
 
+#define DELIM '\t'
+
 int
 main (int argc, char **argv)
 {
@@ -28,40 +30,13 @@ main (int argc, char **argv)
   char *dbname;
   datum key;
   datum data;
-  int delim = '\t';
   
-  while (--argc)
-    {
-      char *arg = *++argv;
-
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-delim=CHR] DBFILE\n", progname);
-	  exit (0);
-	}
-      else if (strncmp (arg, "-delim=", 7) == 0)
-	delim = arg[7];
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
-  if (argc != 1)
+  if (argc != 2)
     {
       fprintf (stderr, "%s: wrong arguments\n", progname);
       exit (1);
     }
-  dbname = *argv;
+  dbname = argv[1];
   
   if (dbminit (dbname))
     {
@@ -75,12 +50,12 @@ main (int argc, char **argv)
       
       for (i = 0; i < key.dsize && key.dptr[i]; i++)
 	{
-	  if (key.dptr[i] == delim || key.dptr[i] == '\\')
+	  if (key.dptr[i] == DELIM || key.dptr[i] == '\\')
 	    fputc ('\\', stdout);
 	  fputc (key.dptr[i], stdout);
 	}
 
-      fputc (delim, stdout);
+      fputc (DELIM, stdout);
 
       data = fetch (key);
       i = data.dsize;

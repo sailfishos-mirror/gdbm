@@ -20,11 +20,13 @@
 #include <stdarg.h>
 #include <string.h>
 #include <errno.h>
-#include "gdbm.h"
-#include "progname.h"
+#include <gdbm.h>
+#include <gdbmapp.h>
+#include <gdbmtest.h>
 #include <assert.h>
 
-const char *progname;
+char *parseopt_program_doc = "Recover a GDBM database from failure";
+char *parseopt_program_args = "DBNAME";
 
 void
 err_printer (void *data, char const *fmt, ...)
@@ -38,92 +40,91 @@ err_printer (void *data, char const *fmt, ...)
   fprintf (stderr, "\n");
 }
 
+enum
+  {
+    OPT_NULL = 256,
+    OPT_RECOVER,
+    OPT_BACKUP,
+    OPT_MAX_FAILURES,
+    OPT_MAX_FAILED_KEYS,
+    OPT_MAX_FAILED_BUCKETS,
+  };
+
+static struct gdbm_option gtrecover_options[] = {
+  { 'v', "verbose", NULL, "verbose mode" },
+  { OPT_BACKUP, "backup", NULL, "create backup copy of the database" },
+  { OPT_MAX_FAILURES, "max-failures", "N", "max. number of failures" },
+  { OPT_MAX_FAILED_KEYS, "max-failed-keys", "N", "max. number of failed keys" },
+  { OPT_MAX_FAILED_BUCKETS, "max-failed-buckets", "N", "max. number of failed buckets" },
+  { 0}
+};
+
+struct gtrecover_params
+{
+  gdbm_recovery rcvr;
+  int rcvr_flags;
+};
+
+#define GTRECOVER_PARAMS_STATIC_INITIALIZER {}
+
+static int
+gtrecover_option_parser (int key, char *arg, void *closure,
+			 struct gdbm_test_config *gtc)
+{
+  struct gtrecover_params *p = closure;
+  
+  switch (key)
+    {
+    case 'v':
+      p->rcvr.errfun = err_printer;
+      p->rcvr_flags |= GDBM_RCVR_ERRFUN;
+      break;
+
+    case OPT_BACKUP:
+      p->rcvr_flags |= GDBM_RCVR_BACKUP;
+      break;
+
+    case OPT_MAX_FAILURES:
+      p->rcvr.max_failures = gdbm_test_strtosize (arg, gtc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILURES;
+      break;
+
+    case OPT_MAX_FAILED_KEYS:
+      p->rcvr.max_failed_keys = gdbm_test_strtosize (arg, gtc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILED_KEYS;
+      break;
+      
+    case OPT_MAX_FAILED_BUCKETS:
+      p->rcvr.max_failures = gdbm_test_strtosize (arg, gtc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILED_BUCKETS;
+      break;
+
+    default:
+      return 1;
+    }
+  return 0;
+}
+
 int
 main (int argc, char **argv)
 {
-  const char *dbname;
   GDBM_FILE dbf;
+  struct gtrecover_params params = GTRECOVER_PARAMS_STATIC_INITIALIZER;
   int rc = 0;
-  int open_flags = GDBM_WRITER;
-  gdbm_recovery rcvr;
-  int rcvr_flags = 0;
-  char *p;
+
+  dbf = gdbm_test_init (argc, argv,
+			GDBM_TESTOPT_DATABASE, GDBM_TESTDB_ARG,
+			GDBM_TESTOPT_OPTIONS, gtrecover_options,
+			GDBM_TESTOPT_PARSEOPT, gtrecover_option_parser, &params,
+			GDBM_TESTOPT_OPEN_FLAGS, GDBM_WRITER,
+			GDBM_TESTOPT_EXIT_ERROR, 1,
+			GDBM_TESTOPT_END);
   
-  progname = canonical_progname (argv[0]);
-  while (--argc)
-    {
-      char *arg = *++argv;
-
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-nolock] [-nommap] [-verbose] [-backup] [-max-failures=N] [-max-failed-keys=N] [-max-failed-buckets=N] DBFILE\n",
-		  progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-nolock") == 0)
-	open_flags |= GDBM_NOLOCK;
-      else if (strcmp (arg, "-nommap") == 0)
-	open_flags |= GDBM_NOMMAP;
-      else if (strcmp (arg, "-verbose") == 0)
-	{
-	  rcvr.errfun = err_printer;
-	  rcvr_flags |= GDBM_RCVR_ERRFUN;
-	}
-      else if (strcmp (arg, "-backup") == 0)
-	rcvr_flags |= GDBM_RCVR_BACKUP;
-      else if (strncmp (arg, "-max-failures=", 14) == 0)
-	{
-	  rcvr.max_failures = strtoul (arg + 14, &p, 10);
-	  assert (*p == 0);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILURES;
-	}
-      else if (strncmp (arg, "-max-failed-keys=", 17) == 0)
-	{
-	  rcvr.max_failed_keys = strtoul (arg + 17, &p, 10);
-	  assert (*p == 0);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILED_KEYS;
-	}
-      else if (strncmp (arg, "-max-failed-buckets=", 20) == 0)
-	{
-	  rcvr.max_failures = strtoul (arg + 20, &p, 10);
-	  assert (*p == 0);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILED_BUCKETS;
-	}
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
-  if (argc < 1)
-    {
-      fprintf (stderr, "%s: wrong arguments\n", progname);
-      exit (1);
-    }
-  dbname = *argv;
-  
-  dbf = gdbm_open (dbname, 0, open_flags, 0, NULL);
-  if (!dbf)
-    {
-      fprintf (stderr, "gdbm_open failed: %s\n", gdbm_strerror (gdbm_errno));
-      exit (1);
-    }
-
-  rc = gdbm_recover (dbf, &rcvr, rcvr_flags);
+  rc = gdbm_recover (dbf, &params.rcvr, params.rcvr_flags);
 
   if (gdbm_close (dbf))
     {
-      fprintf (stderr, "gdbm_close: %s; %s\n", gdbm_strerror (gdbm_errno),
-	       strerror (errno));
+      gdbm_perror ("gdbm_close");
       rc = 3;
     }
   exit (rc);

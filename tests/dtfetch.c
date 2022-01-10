@@ -41,39 +41,10 @@ main (int argc, char **argv)
   char *dbname;
   datum key;
   datum data;
-  int data_z = 0;
-  int delim = 0;
   int rc = 0;
   
-  while (--argc)
-    {
-      char *arg = *++argv;
-
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-null] [-delim=CHR] DBFILE KEY [KEY...]\n",
-		  progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-null") == 0)
-	data_z = 1;
-      else if (strncmp (arg, "-delim=", 7) == 0)
-	delim = arg[7];
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
+  argc--;
+  argv++;
   if (argc < 2)
     {
       fprintf (stderr, "%s: wrong arguments\n", progname);
@@ -92,24 +63,16 @@ main (int argc, char **argv)
       char *arg = *++argv;
 
       key.dptr = arg;
-      key.dsize = strlen (arg) + !!data_z;
+      key.dsize = strlen (arg);
 
       data = fetch (key);
       if (data.dptr == NULL)
 	{
 	  rc = 2;
-	  fprintf (stderr, "%s: ", progname);
-	  print_key (stderr, key, delim);
-	  fprintf (stderr, ": not found\n");
+	  fprintf (stderr, "%s: %s: not found\n", progname, key.dptr);
 	  continue;
 	}
-      if (delim)
-	{
-	  print_key (stdout, key, delim);
-	  fputc (delim, stdout);
-	}
-
-      fwrite (data.dptr, data.dsize - !!data_z, 1, stdout);
+      fwrite (data.dptr, data.dsize, 1, stdout);
       
       fputc ('\n', stdout);
     }

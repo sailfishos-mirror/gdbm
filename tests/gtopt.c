@@ -31,30 +31,6 @@ int block_size = 0;             /* block size for the db. 0 means default */
 size_t mapped_size_max = 32768; /* size of the memory mapped region */
 size_t cache_size = 32;         /* cache size */
 
-static size_t
-get_max_mmap_size (const char *arg)
-{
-  char *p;
-  size_t size;
-  
-  errno = 0;
-  size = strtoul (arg, &p, 10);
-	  
-  if (errno)
-    {
-      fprintf (stderr, "%s: ", progname);
-      perror ("maxmap");
-      exit (1);
-    }
-  
-  if (*p)
-    {
-      fprintf (stderr, "%s: bad maxmap\n", progname);
-      exit (1);
-    }
-  return size;
-}
-
 /* Test results */
 #define RES_PASS  0
 #define RES_FAIL  1
@@ -310,47 +286,13 @@ main (int argc, char **argv)
   struct optest *op;
   
   progname = canonical_progname (argv[0]);
-  while (--argc)
-    {
-      char *arg = *++argv;
 
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-blocksize=N] [-nolock] [-sync] [-maxmap=N] DBFILE [GROUP [GROUP...]\n",
-		  progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-nolock") == 0)
-	flags |= GDBM_NOLOCK;
-      else if (strcmp (arg, "-sync") == 0)
-	flags |= GDBM_SYNC;
-      else if (strncmp (arg, "-blocksize=", 11) == 0)
-	block_size = atoi (arg + 11);
-      else if (strncmp (arg, "-maxmap=", 8) == 0)
-	mapped_size_max = get_max_mmap_size (arg + 8);
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
-    }
-
-  if (argc == 0)
+  if (argc < 2)
     {
-      fprintf (stderr, "%s: wrong arguments\n", progname);
+      fprintf (stderr, "%s: not enough arguments\n", progname);
       exit (1);
     }
-  dbname = *argv;
-  ++argv;
-  --argc;
+  dbname = *++argv;
   
   dbf = gdbm_open (dbname, block_size, mode|flags, 00664, NULL);
   if (!dbf)

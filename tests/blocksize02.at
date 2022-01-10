@@ -18,11 +18,11 @@ AT_SETUP([incorrect blocksize])
 AT_KEYWORDS([gdbm create blocksize blocksize02])
 
 AT_CHECK([
-gtload -blocksize=1025 -bsexact -clear -verbose test.db < /dev/null
+gtload --block-size=1025 -Fbsexact --clear test.db < /dev/null
 ],
 [1],
 [],
-[gdbm_open failed: Block size error
+[gtload: can't open test.db: Block size error
 ])
 
 AT_CLEANUP

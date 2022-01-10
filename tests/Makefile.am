@@ -135,11 +135,22 @@ noinst_HEADERS=progname.h
 
 LDADD = ../src/libgdbm.la
 
-dtload_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
-dtdump_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
-dtfetch_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
-dtdel_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
-d_creat_ce_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
+GDBMTESTLIBS = ../src/libgdbm.la ../tools/libgdbmtest.a ../tools/libgdbmapp.a
+
+gtload_LDADD = $(GDBMTESTLIBS)
+gtdump_LDADD = $(GDBMTESTLIBS)
+gtfetch_LDADD = $(GDBMTESTLIBS) 
+gtrecover_LDADD = $(GDBMTESTLIBS)
+gtdel_LDADD = $(GDBMTESTLIBS)
+
+GDBMCOMPATLIBS = ../src/libgdbm.la ../compat/libgdbm_compat.la
+
+dtload_LDADD = $(GDBMCOMPATLIBS) 
+dtdump_LDADD = $(GDBMCOMPATLIBS)
+dtfetch_LDADD = $(GDBMCOMPATLIBS)
+dtdel_LDADD = $(GDBMCOMPATLIBS)
+d_creat_ce_LDADD = $(GDBMCOMPATLIBS)
+
 t_wordwrap_LDADD = ../tools/libgdbmapp.a
 
 SUBDIRS = gdbmtool

@@ -540,37 +540,7 @@ variables_init (void)
     }
 }
 
-struct kwtrans
-{
-  char *s;
-  int t;
-};
-
-static int
-string_to_int (char const *s, struct kwtrans *t)
-{
-  int i;
-
-  for (i = 0; t[i].s; i++)
-    if (strcmp (t[i].s, s) == 0)
-      return t[i].t;
-  return -1;
-}
-
-#if 0
-static char const *
-int_to_string (int n, struct kwtrans *t)
-{
-  int i;
-
-  for (i = 0; t[i].s; i++)
-    if (t[i].t == n)
-      return t[i].s;
-  return NULL;
-}
-#endif
-
-static struct kwtrans db_open_flags[] = {
+static struct gdbm_symmap db_open_flags[] = {
     { "newdb", GDBM_NEWDB },
     { "wrcreat", GDBM_WRCREAT },
     { "rw", GDBM_WRCREAT },
@@ -585,7 +555,7 @@ open_sethook (struct variable *var, union value *v)
   int n;
   if (!v)
     return VAR_ERR_BADVALUE;
-  n = string_to_int (v->string, db_open_flags);
+  n = gdbm_symmap_string_to_int (v->string, db_open_flags, GDBM_SYMMAP_NONE);
   if (n == -1)
     return VAR_ERR_BADVALUE;
   return VAR_OK;
@@ -596,7 +566,8 @@ open_typeconv (struct variable *var, int type, void **retptr)
 {
   if (type == VART_INT)
     {
-      *(int*) retptr = string_to_int (var->v.string, db_open_flags);
+      *(int*) retptr = gdbm_symmap_string_to_int (var->v.string, db_open_flags,
+						  GDBM_SYMMAP_NONE);
       return VAR_OK;
     }
   return VAR_ERR_BADTYPE;

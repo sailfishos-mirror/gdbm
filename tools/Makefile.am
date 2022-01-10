@@ -21,7 +21,7 @@ AM_CPPFLAGS=\
  -I$(top_builddir)/src\
  -I$(top_srcdir)/tools
 
-noinst_LIBRARIES = libgdbmapp.a
+noinst_LIBRARIES = libgdbmapp.a libgdbmtest.a
 
 libgdbmapp_a_SOURCES =\
  err.c\
@@ -44,6 +44,11 @@ libgdbmapp_a_SOURCES =\
 if GDBM_COND_READLINE
   libgdbmapp_a_SOURCES += input-rl.c
 endif
+
+libgdbmtest_a_SOURCES =\
+ nonls.c\
+ gdbmtest.c\
+ gdbmtest.h
 
 # Programs
 bin_PROGRAMS = gdbmtool gdbm_load gdbm_dump

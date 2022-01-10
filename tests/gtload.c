@@ -21,10 +21,9 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-#include "gdbm.h"
-#include "progname.h"
-
-const char *progname;
+#include <gdbm.h>
+#include <gdbmapp.h>
+#include <gdbmtest.h>
 
 void
 err_printer (void *data, char const *fmt, ...)
@@ -38,216 +37,135 @@ err_printer (void *data, char const *fmt, ...)
   fprintf (stderr, "\n");
 }
 
-size_t
-read_size (char const *arg)
-{
-  char *p;
-  size_t ret;
+enum
+  {
+    OPT_NULL = 256,
+    OPT_RECOVER,
+    OPT_BACKUP,
+    OPT_MAX_FAILURES,
+    OPT_MAX_FAILED_KEYS,
+    OPT_MAX_FAILED_BUCKETS,
+  };
+
+static struct gdbm_option gtload_options[] = {
+  { 'r', "replace", NULL, "replace existing keys" },
+  { OPT_NULL, "null", NULL, "include trailing null to key length" },
+  { 'v', "verbose", NULL, "verbose mode" },
+  { 'd', "delimiter", "CHAR", "CHAR delimits key and value (default: horizontal tab)" },
+  { OPT_RECOVER, "recover", NULL, "recovery mode" },
   
-  errno = 0;
-  ret = strtoul (arg, &p, 10);
-	  
-  if (errno)
-    {
-      fprintf (stderr, "%s: ", progname);
-      perror (arg);
-      exit (1);
-    }
+  { 0, NULL, NULL, "Recovery options" },
+  { OPT_BACKUP, "backup", NULL, "create backup copy of the database" },
+  { OPT_MAX_FAILURES, "max-failures", "N", "max. number of failures" },
+  { OPT_MAX_FAILED_KEYS, "max-failed-keys", "N", "max. number of failed keys" },
+  { OPT_MAX_FAILED_BUCKETS, "max-failed-buckets", "N", "max. number of failed buckets" },
+  { 0}
+};
 
-  if (*p)
-    {
-      fprintf (stderr, "%s: bad number: %s\n", progname, arg);
-      exit (1);
-    }
-
-  return ret;
-}
-
-#ifdef GDBM_DEBUG_ENABLE
-void
-debug_printer (char const *fmt, ...)
+struct gtload_params
 {
-  va_list ap;
+  int delimiter;
+  int replace;
+  int null_opt;
+  int verbose;
+  int recover;
+  gdbm_recovery rcvr;
+  int rcvr_flags;
+};
 
-  va_start (ap, fmt);
-  vfprintf (stderr, fmt, ap);
-  va_end (ap);
+#define GTLOAD_PARAMS_STATIC_INITIALIZER \
+  {					 \
+    .delimiter = '\t',			 \
+  }
+  
+static int
+gtload_option_parser (int key, char *arg, void *closure,
+			 struct gdbm_test_config *oc)
+{
+  struct gtload_params *p = closure;
+  
+  switch (key)
+    {
+    case 'r':
+      p->replace = GDBM_REPLACE;
+      break;
+
+    case OPT_NULL:
+      p->null_opt = 1;
+      break;
+
+    case 'v':
+      p->verbose = 1;
+      break;
+
+    case 'd':
+      p->delimiter = arg[0];
+      break;
+
+    case OPT_RECOVER:
+      p->recover = 1;
+      break;
+
+    case OPT_BACKUP:
+      p->rcvr_flags |= GDBM_RCVR_BACKUP;
+      break;
+
+    case OPT_MAX_FAILURES:
+      p->rcvr.max_failures = gdbm_test_strtosize (arg, oc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILURES;
+      break;
+
+    case OPT_MAX_FAILED_KEYS:
+      p->rcvr.max_failed_keys = gdbm_test_strtosize (arg, oc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILED_KEYS;
+      break;
+      
+    case OPT_MAX_FAILED_BUCKETS:
+      p->rcvr.max_failures = gdbm_test_strtosize (arg, oc);
+      p->rcvr_flags |= GDBM_RCVR_MAX_FAILED_BUCKETS;
+      break;
+
+    default:
+      return 1;
+    }
+  return 0;
 }
-#endif
+
+char *parseopt_program_doc = "load a GDBM database";
+char *parseopt_program_args = "DBNAME";
 
 int
 main (int argc, char **argv)
 {
-  const char *dbname;
+  GDBM_FILE dbf;
+  struct gtload_params params = GTLOAD_PARAMS_STATIC_INITIALIZER;
   int line = 0;
   char buf[1024];
-  datum key;
-  datum data;
-  int replace = 0;
-  int flags = 0;
-  int mode = GDBM_WRCREAT;
-  int block_size = 0;
-  GDBM_FILE dbf;
-  int delim = '\t';
-  int data_z = 0;
-  size_t mapped_size_max = 0;
-  int blksize;
-  int verbose = 0;
-  int recover = 0;
-  gdbm_recovery rcvr;
-  int rcvr_flags = 0;
-  size_t cache_size = 0;
   
-  progname = canonical_progname (argv[0]);
-#ifdef GDBM_DEBUG_ENABLE
-  gdbm_debug_printer = debug_printer;
-#endif
-  
-  while (--argc)
+  dbf = gdbm_test_init (argc, argv,
+			GDBM_TESTOPT_DATABASE, GDBM_TESTDB_ARG,
+			GDBM_TESTOPT_OPTIONS, gtload_options,
+			GDBM_TESTOPT_PARSEOPT, gtload_option_parser, &params,
+			GDBM_TESTOPT_OPEN_FLAGS, GDBM_WRCREAT,
+			GDBM_TESTOPT_EXIT_ERROR, 1,
+			GDBM_TESTOPT_END);
+
+  if (params.verbose && params.recover)
     {
-      char *arg = *++argv;
-
-      if (strcmp (arg, "-h") == 0)
-	{
-	  printf ("usage: %s [-replace] [-clear] [-blocksize=N] [-bsexact] [-verbose] [-null] [-nolock] [-nommap] [-maxmap=N] [-sync] [-delim=CHR] DBFILE\n", progname);
-	  exit (0);
-	}
-      else if (strcmp (arg, "-replace") == 0)
-	replace |= GDBM_REPLACE;
-      else if (strcmp (arg, "-clear") == 0)
-	mode = GDBM_NEWDB;
-      else if (strcmp (arg, "-null") == 0)
-	data_z = 1;
-      else if (strcmp (arg, "-nolock") == 0)
-	flags |= GDBM_NOLOCK;
-      else if (strcmp (arg, "-nommap") == 0)
-	flags |= GDBM_NOMMAP;
-      else if (strcmp (arg, "-sync") == 0)
-	flags |= GDBM_SYNC;
-      else if (strcmp (arg, "-bsexact") == 0)
-	flags |= GDBM_BSEXACT;
-      else if (strcmp (arg, "-verbose") == 0)
-	verbose = 1;
-      else if (strncmp (arg, "-blocksize=", 11) == 0)
-	block_size = atoi (arg + 11);
-      else if (strncmp (arg, "-maxmap=", 8) == 0)
-	mapped_size_max = read_size (arg + 8);
-      else if (strncmp (arg, "-delim=", 7) == 0)
-	delim = arg[7];
-      else if (strcmp (arg, "-recover") == 0)
-	recover = 1;
-      else if (strncmp (arg, "-cachesize=", 11) == 0)
-	cache_size = read_size (arg + 11);
-      else if (strcmp (arg, "-verbose") == 0)
-	{
-	  verbose = 1;
-	  rcvr.errfun = err_printer;
-	  rcvr_flags |= GDBM_RCVR_ERRFUN;
-	}
-      else if (strcmp (arg, "-backup") == 0)
-	rcvr_flags |= GDBM_RCVR_BACKUP;
-      else if (strncmp (arg, "-max-failures=", 14) == 0)
-	{
-	  rcvr.max_failures = read_size (arg + 14);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILURES;
-	}
-      else if (strncmp (arg, "-max-failed-keys=", 17) == 0)
-	{
-	  rcvr.max_failed_keys = read_size (arg + 17);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILED_KEYS;
-	}
-      else if (strncmp (arg, "-max-failed-buckets=", 20) == 0)
-	{
-	  rcvr.max_failures = read_size (arg + 20);
-	  rcvr_flags |= GDBM_RCVR_MAX_FAILED_BUCKETS;
-	}
-      else if (strncmp (arg, "-numsync", 8) == 0)
-	flags = GDBM_NUMSYNC;
-#ifdef GDBM_DEBUG_ENABLE
-      else if (strncmp (arg, "-debug=", 7) == 0)
-	{
-	  char *p;
-
-	  for (p = strtok (arg + 7, ","); p; p = strtok (NULL, ","))
-	    {
-	      int f = gdbm_debug_token (p);
-	      if (!f)
-		fprintf (stderr, "%s: unknown flag: %s\n", progname, p);
-	      else
-		gdbm_debug_flags |= f;
-	    }
-	}
-#endif
-      else if (strcmp (arg, "--") == 0)
-	{
-	  --argc;
-	  ++argv;
-	  break;
-	}
-      else if (arg[0] == '-')
-	{
-	  fprintf (stderr, "%s: unknown option %s\n", progname, arg);
-	  exit (1);
-	}
-      else
-	break;
+      params.rcvr.errfun = err_printer;
+      params.rcvr_flags |= GDBM_RCVR_ERRFUN;
     }
 
-  if (argc != 1)
-    {
-      fprintf (stderr, "%s: wrong arguments\n", progname);
-      exit (1);
-    }
-  dbname = *argv;
-  
-  dbf = gdbm_open (dbname, block_size, mode|flags, 00664, NULL);
-  if (!dbf)
-    {
-      fprintf (stderr, "gdbm_open failed: %s\n", gdbm_strerror (gdbm_errno));
-      exit (1);
-    }
-
-  if (mapped_size_max)
-    {
-      if (gdbm_setopt (dbf, GDBM_SETMAXMAPSIZE, &mapped_size_max,
-		       sizeof (mapped_size_max)))
-	{
-	  fprintf (stderr, "GDBM_SETMAXMAPSIZE failed: %s\n",
-		   gdbm_strerror (gdbm_errno));
-	  exit (1);
-	}
-    }
-  if (cache_size)
-    {
-      if (gdbm_setopt (dbf, GDBM_SETCACHESIZE, &cache_size,
-		       sizeof (cache_size)))
-	{
-	  fprintf (stderr, "GDBM_SETCACHESIZE failed: %s\n",
-		   gdbm_strerror (gdbm_errno));
-	  exit (1);
-	}
-    }	  
-
-  if (verbose)
-    {
-      if (gdbm_setopt (dbf, GDBM_GETBLOCKSIZE, &blksize, sizeof blksize))
-	{
-	  fprintf (stderr, "GDBM_GETBLOCKSIZE failed: %s\n",
-		   gdbm_strerror (gdbm_errno));
-	  exit (1);
-	}
-      printf ("blocksize=%d\n", blksize);
-    }
-  
   while (fgets (buf, sizeof buf, stdin))
     {
       size_t i, j;
       size_t len = strlen (buf);
+      datum key;
+      datum data;
 
       if (buf[len - 1] != '\n')
 	{
-	  fprintf (stderr, "%s: %d: line too long\n",
-		   progname, line);
+	  error ("%d: line too long", line);
 	  continue;
 	}
 
@@ -259,41 +177,32 @@ main (int argc, char **argv)
 	{
 	  if (buf[i] == '\\')
 	    i++;
-	  else if (buf[i] == delim)
+	  else if (buf[i] == params.delimiter)
 	    break;
 	  else
 	    buf[j++] = buf[i];
 	}
 
-      if (buf[i] != delim)
+      if (buf[i] != params.delimiter)
 	{
-	  fprintf (stderr, "%s: %d: malformed line\n",
-		   progname, line);
+	  error ("%d: malformed line", line);
 	  continue;
 	}
       buf[j] = 0;
       
       key.dptr = buf;
-      key.dsize = j + data_z;
+      key.dsize = j + params.null_opt;
       data.dptr = buf + i + 1;
-      data.dsize = strlen (data.dptr) + data_z;
-      if (gdbm_store (dbf, key, data, replace) != 0)
+      data.dsize = strlen (data.dptr) + params.null_opt;
+      if (gdbm_store (dbf, key, data, params.replace) != 0)
 	{
-	  fprintf (stderr, "%s: %d: item not inserted: %s\n",
-		   progname, line, gdbm_db_strerror (dbf));
-	  if (gdbm_needs_recovery (dbf) && recover)
+	  error ("%d: item not inserted: %s", line, gdbm_db_strerror (dbf));
+	  if (gdbm_needs_recovery (dbf) && params.recover)
 	    {
-	      int rc = gdbm_recover (dbf, &rcvr, rcvr_flags);
+	      int rc = gdbm_recover (dbf, &params.rcvr, params.rcvr_flags);
 	      if (rc)
-		{
-		  int ec = errno;
-		  fprintf (stderr, "%s: recovery failed: %s",
-			   progname, gdbm_strerror (gdbm_errno));
-		  if (gdbm_check_syserr (gdbm_errno))
-		    fprintf (stderr, ": %s", strerror (ec));
-		  fputc ('\n', stderr);
-		}
-	      --recover;
+		gdbm_perror ("recovery failed");
+	      params.recover = 0;
 	    }
 	  else
 	    {
@@ -303,8 +212,7 @@ main (int argc, char **argv)
     }
   if (gdbm_close (dbf))
     {
-      fprintf (stderr, "gdbm_close: %s; %s\n", gdbm_strerror (gdbm_errno),
-	       strerror (errno));
+      gdbm_perror ("gdbm_close");
       exit (3);
     }
   exit (0);
