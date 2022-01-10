@@ -750,7 +750,7 @@ gdbm_test_parse_args_v (int argc, char **argv, va_list ap)
       argv++;
       argc--;
     }
-  else if (gtc.dbname)
+  else if (!gtc.dbname)
     {
       gdbm_test_usage_exit (&gtc, "database name not set; use the -%c option",
 			    OPT_DATABASE_NAME);
