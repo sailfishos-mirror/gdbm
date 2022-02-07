@@ -1303,10 +1303,12 @@ code.  The following are the ones that have:
 @item GDBM_FILE_READ_ERROR
 @item GDBM_FILE_STAT_ERROR
 @item GDBM_BACKUP_FAILED
-@item GDBM_BACKUP_FAILED
 @item GDBM_FILE_CLOSE_ERROR
 @item GDBM_FILE_SYNC_ERROR
 @item GDBM_FILE_TRUNCATE_ERROR
+@item GDBM_ERR_SNAPSHOT_CLONE
+@item GDBM_ERR_REALPATH
+@item GDBM_ERR_USAGE
 @end itemize
 
 For other errors, @code{gdbm_last_syserr} will return 0.
