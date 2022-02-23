@@ -709,8 +709,5 @@ parseopt_next (void)
     }
   while (handle_option (rc));
 
-  if (rc == EOF || rc == '?')
-    parseopt_free ();
-  
   return rc;
 }
