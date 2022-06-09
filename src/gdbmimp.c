@@ -113,7 +113,7 @@ gdbm_import_from_file (GDBM_FILE dbf, FILE *fp, int flag)
       key.dsize = (int) size;
 
       /* Read the data. */
-      if (fread (&rsize, sizeof (rsize), 1, fp) != 1)
+      if (size > 0 && fread (&rsize, sizeof (rsize), 1, fp) != 1)
 	{
 	  ec = GDBM_FILE_READ_ERROR;
 	  break;
@@ -135,7 +135,7 @@ gdbm_import_from_file (GDBM_FILE dbf, FILE *fp, int flag)
 	      break;
 	    }
 	}
-      if (fread (dbuffer, size, 1, fp) != 1)
+      if (size > 0 && fread (dbuffer, size, 1, fp) != 1)
 	{
 	  ec = GDBM_FILE_READ_ERROR;
 	  break;

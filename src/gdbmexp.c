@@ -65,13 +65,13 @@ gdbm_export_to_file (GDBM_FILE dbf, FILE *fp)
 	  size = htonl (key.dsize);
 	  if (fwrite (&size, sizeof (size), 1, fp) != 1)
 	    goto write_fail;
-	  if (fwrite (key.dptr, key.dsize, 1, fp) != 1)
+	  if (key.dsize > 0 && fwrite (key.dptr, key.dsize, 1, fp) != 1)
 	    goto write_fail;
 
 	  size = htonl (data.dsize);
 	  if (fwrite (&size, sizeof (size), 1, fp) != 1)
 	    goto write_fail;
-	  if (fwrite (data.dptr, data.dsize, 1, fp) != 1)
+	  if (data.dsize > 0 && fwrite (data.dptr, data.dsize, 1, fp) != 1)
 	    goto write_fail;
  	}
       
