@@ -1329,6 +1329,7 @@ snapshot_handler (struct command_param *param, struct command_environ *cenv)
   char *sb = tildexpand (PARAM_STRING (param, 1));
   char const *sel;
   int rc = gdbm_latest_snapshot (sa, sb, &sel);
+  int res;
 
   if (rc >= 0 && rc < ARRAY_SIZE (snapshot_status_info))
     {
@@ -1340,13 +1341,17 @@ snapshot_handler (struct command_param *param, struct command_environ *cenv)
 	snapshot_status_info[rc].fn (cenv->fp, sa, sb);
       if (rc == GDBM_SNAPSHOT_OK)
 	print_snapshot (sel, cenv->fp);
+      res = GDBMSHELL_OK;
     }
   else
     {
       terror (_("unexpected error code: %d"), rc);
-      return GDBMSHELL_ERR;
+      res = GDBMSHELL_ERR;
     }
-  return GDBMSHELL_OK;
+
+  free (sa);
+  free (sb);
+  return res;
 }
 
 
