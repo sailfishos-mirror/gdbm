@@ -237,6 +237,7 @@ struct command_param
   
 #define HANDLER_PARAM_INITIALIZER { 0, 0, NULL, NULL }
 
+#define PARAM_LOCPTR(p,n) (&(p)->argv[n]->loc)
 #define PARAM_STRING(p,n) ((p)->argv[n]->v.string)
 #define PARAM_DATUM(p,n)  ((p)->argv[n]->v.dat)
 #define PARAM_KVPAIR(p,n) ((p)->argv[n]->v.kvpair)

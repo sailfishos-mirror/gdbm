@@ -37,10 +37,12 @@ advance_line (void)
   context_tos->point.col = 0;
 }
 
+static int setbeg (void);
+ 
 #define YY_USER_ACTION					    \
   do							    \
     {							    \
-      if (YYSTATE == 0)					    \
+      if (setbeg ())					    \
 	{						    \
 	  yylloc.beg = context_tos->point;		    \
 	  yylloc.beg.col++;				    \
@@ -681,6 +683,23 @@ psname (void)
     }
 }
 
+static int
+setbeg (void)
+{
+  switch (YYSTATE)
+    {
+    case INITIAL:
+    case CMD:
+    case SHELL:
+    case DEF:
+      return 1;
+
+    default:
+      /* STR MLSTR SHELLWS SHSTR SHQ */
+      return 0;
+    }
+}
+    
 char *
 make_prompt (void)
 {

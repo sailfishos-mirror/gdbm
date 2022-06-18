@@ -256,10 +256,11 @@ EOF
 if test "$want_gdbmtool_debug" != default; then
     cat <<EOF    
 NOTE: You used the --enable-gdbmtool-debug option. In order for your changes
-NOTE: to take effect, please run the following command prior to building the
+NOTE: to take effect, please run the following commands prior to building the
 NOTE: package:
 NOTE:
 NOTE:   make -C src maintainer-clean-generic
+NOTE:   make -C tools maintainer-clean-generic
 NOTE:
 EOF
 fi
