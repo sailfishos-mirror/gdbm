@@ -57,19 +57,31 @@ main (int argc, char **argv)
 	  format = GDBM_DUMP_FMT_ASCII;
 	else
 	  {
-	    format = atoi (optarg);
-	    switch (format)
+	    char *p;
+	    unsigned long n;
+
+	    errno = 0;
+	    n = strtoul (optarg, &p, 10);
+	    if (errno || *p != 0)
+	      {
+		error (_("unknown dump format"));
+		exit (EXIT_USAGE);
+	      }
+
+	    switch (n)
 	      {
 	      case GDBM_DUMP_FMT_BINARY:
 	      case GDBM_DUMP_FMT_ASCII:
+		format = n;
 		break;
+
 	      default:
 		error (_("unknown dump format"));
 		exit (EXIT_USAGE);
 	      }
 	  }
 	break;
-	
+
       default:
 	error (_("unknown option"));
 	exit (EXIT_USAGE);
@@ -90,7 +102,7 @@ main (int argc, char **argv)
       error (_("too many arguments; try `%s -h' for more info"), progname);
       exit (EXIT_USAGE);
     }
-  
+
   dbname = argv[0];
   if (argc == 2)
     filename = argv[1];
@@ -124,9 +136,8 @@ main (int argc, char **argv)
     {
       gdbm_perror (_("dump error"), filename);
     }
-  
+
   gdbm_close (dbf);
 
   exit (rc == GDBM_NO_ERROR ? EXIT_OK : EXIT_FATAL);
 }
-  
