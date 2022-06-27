@@ -1900,7 +1900,7 @@ input_history_begin (struct command_param *param,
       /* TRANSLATORS: %s is the stream name */
       terror (_("input history is not available for %s input stream"),
 	      input_stream_name ());
-      return GDBMSHELL_OK;
+      return GDBMSHELL_ERR;
     }
 
   switch (param->argc)
