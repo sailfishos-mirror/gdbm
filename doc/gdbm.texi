@@ -3251,6 +3251,8 @@ symmetry).  A special code @samp{all} stands for all available error codes.
 
 In boolean context, the @code{true} value is equivalent to @samp{all},
 and @code{false} (i.e. variable unset) is equivalent to @samp{-all}.
+
+This variable cannot be set from interactive sessions.
 @end deftypevr
 
 @deftypevr {gdbmtool variable} string errormask
@@ -4070,9 +4072,17 @@ must be given as the second argument.
 
 In general, if two arguments are given, the second one is treated as
 the name of the database to create, overriding the file name specified
-in the flat file.
+in the flat file.  All existing keys will be removed from this
+database prior to loading from the dump.  Use the @option{--update}
+(@option{-U}) option if it is not what you wish.
 
-The utility understands the following command line arguments:
+When given the @option{--update} (@option{-U}) option,
+@command{gdbm_load} will update the existing database with the data
+from the dump.  It will bail out if the dump contains a key that is
+already present in the database.  To silently overwrite existing keys,
+use the @option{--replace} (@option{-r}) option.
+
+The utility understands the following command line options:
 
 @table @option
 
@@ -4098,7 +4108,16 @@ Do not restore file meta-data (ownership and mode) from the flat file.
 
 @item -r
 @itemx --replace
-Replace existing keys.
+Replace existing keys.  This option can be used only together with
+@option{--update} (@option{-U}).
+
+@item -U
+@itemx --update
+Update an existing database.  The database name must be given in the
+second argument to @command{gdbm_load}.  The key/value pairs from the
+dump file will be added to that database, without removing the
+existing keys.  To overwrite the existing keys from the dump file, use
+@option{--update --replace}.
 
 @item -u @var{user}[:@var{group}]
 @itemx --user=@var{user}[:@var{group}]

@@ -32,8 +32,9 @@ gid_t owner_gid;
 char *parseopt_program_doc = N_("load a GDBM database from a file");
 char *parseopt_program_args = N_("FILE [DB_FILE]");
 struct gdbm_option optab[] = {
-  { 'r', "replace", NULL, N_("replace records in the existing database") },
+  { 'r', "replace", NULL, N_("replace records in the existing database (needs -U)") },
   { 'm', "mode", N_("MODE"), N_("set file mode") },
+  { 'U', "update", NULL, N_("update the existing database") },
   { 'u', "user", N_("NAME|UID[:NAME|GID]"), N_("set file owner") },
   { 'n', "no-meta", NULL, N_("do not attempt to set file meta-data") },
   { 'M', "mmap", NULL, N_("use memory mapping") },
@@ -139,6 +140,10 @@ main (int argc, char **argv)
 	}
 	break;
 
+      case 'U':
+	oflags = (oflags & ~GDBM_OPENMASK) | GDBM_WRCREAT;
+	break;
+
       case 'u':
 	{
 	  size_t len;
@@ -228,13 +233,24 @@ main (int argc, char **argv)
 
   if (argc > 2)
     {
-      error (_("too many arguments; try `%s -h' for more info"), progname);
+      error (_("too many arguments; try `%s -h' for more info"));
+      exit (EXIT_USAGE);
+    }
+
+  if (replace && (oflags & GDBM_OPENMASK) != GDBM_WRCREAT)
+    {
+      error (_("-r is useless without -U"));
       exit (EXIT_USAGE);
     }
   
   filename = argv[0];
   if (argc == 2)
     dbname = argv[1];
+  else if (oflags & GDBM_WRCREAT)
+    {
+      error (_("-U requires DB_FILE to be supplied"));
+      exit (EXIT_USAGE);
+    }
   else
     dbname = NULL;
 
