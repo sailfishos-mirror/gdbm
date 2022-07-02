@@ -4119,13 +4119,16 @@ dump file will be added to that database, without removing the
 existing keys.  To overwrite the existing keys from the dump file, use
 @option{--update --replace}.
 
-@item -u @var{user}[:@var{group}]
-@itemx --user=@var{user}[:@var{group}]
-Set file owner.  The @var{user} can be either a valid user name or
+@item -u @var{owner}[:[@var{group}]]
+@itemx --user=@var{owner}[:[@var{group}]]
+Set file owner.  The @var{owner} can be either a valid user name or
 UID.  Similarly, the @var{group} is either a valid group name or GID.
-If @var{group} is not given, the main group of @var{user} is used.
+If @var{group} is not given, the main group of @var{owner} is implied, if
+@var{owner} is followed by a @samp{:}, otherwise the login group of the
+current user is implied.
 
-User and group parts can be separated by a dot, instead of the colon.
+User and group parts can be separated by a dot, instead of the colon,
+but such usage is discouraged.
 
 @item -h
 @itemx --help

@@ -148,9 +148,10 @@ main (int argc, char **argv)
 	{
 	  size_t len;
 	  struct passwd *pw;
+	  int delim;
 	  
 	  len = strcspn (optarg, ".:");
-	  if (optarg[len])
+	  if ((delim = optarg[len]) != 0)
 	    optarg[len++] = 0;
 	  pw = getpwnam (optarg);
 	  if (pw)
@@ -187,7 +188,7 @@ main (int argc, char **argv)
 		    }
 		}
 	    }
-	  else
+	  else if (delim)
 	    {
 	      if (!pw)
 		{
@@ -199,6 +200,10 @@ main (int argc, char **argv)
 		    }
 		}
 	      owner_gid = pw->pw_gid;
+	    }
+	  else
+	    {
+	      owner_gid = getgid();
 	    }
 	  meta_mask |= GDBM_META_MASK_OWNER;
 	}
