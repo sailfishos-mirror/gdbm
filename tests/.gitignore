@@ -31,4 +31,5 @@ testsuite.dir
 *.sum
 *.bak
 site.exp
+t_dumpload
 t_wordwrap
