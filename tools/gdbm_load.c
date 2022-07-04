@@ -238,7 +238,7 @@ main (int argc, char **argv)
 
   if (argc > 2)
     {
-      error (_("too many arguments; try `%s -h' for more info"));
+      error (_("too many arguments; try `%s -h' for more info"), progname);
       exit (EXIT_USAGE);
     }
 
