@@ -134,7 +134,7 @@ main (int argc, char **argv)
   rc = gdbm_dump_to_file (dbf, fp, format);
   if (rc)
     {
-      gdbm_perror (_("dump error"), filename);
+      gdbm_perror (_("%s: dump error"), filename);
     }
 
   gdbm_close (dbf);
