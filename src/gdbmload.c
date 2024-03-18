@@ -73,8 +73,8 @@ getparm (const char *buf, const char *parm)
   return NULL;
 }
 
-static size_t
-get_dump_line (struct dump_file *file)
+static int
+get_dump_line (struct dump_file *file, size_t *nread)
 {
   char buf[80];
   
@@ -83,8 +83,8 @@ get_dump_line (struct dump_file *file)
       while (fgets (buf, sizeof buf, file->fp))
 	{
 	  size_t n = strlen (buf);
-	  
-	  if (buf[n-1] == '\n')
+
+	  if (n > 0 && buf[n-1] == '\n')
 	    {
 	      file->line++;
 	      --n;
@@ -111,21 +111,26 @@ get_dump_line (struct dump_file *file)
 	    }
 	}
     }
-  return file->lblevel;
+  if (ferror (file->fp))
+    return GDBM_FILE_READ_ERROR;
+  if ((*nread = file->lblevel) == 0)
+    return GDBM_FILE_EOF;
+  return GDBM_NO_ERROR;
 }
 
 static int
 get_data (struct dump_file *file)
 {
   size_t n;
+  int rc;
 
   file->buflevel = 0;
   file->parmc = 0;
   
-  while ((n = get_dump_line (file)))
+  while ((rc = get_dump_line (file, &n)) == GDBM_NO_ERROR)
     {
       if (file->linebuf[0] == '#')
-	return 0;
+	return GDBM_NO_ERROR;
       if (n + file->buflevel > file->bufsize)
 	{
 	  size_t s = ((file->buflevel + n + _GDBM_MAX_DUMP_LINE_LEN - 1)
@@ -141,24 +146,27 @@ get_data (struct dump_file *file)
       file->buflevel += n;
       file->lblevel = 0;
     }
-  return ferror (file->fp) ? GDBM_FILE_READ_ERROR : 0;
+  if (rc == GDBM_FILE_EOF && file->buflevel > 0)
+    rc = GDBM_NO_ERROR;
+  return rc;
 }
 
 static int
 get_parms (struct dump_file *file)
 {
   size_t n;
+  int rc;
 
   file->buflevel = 0;
   file->parmc = 0;
-  while ((n = get_dump_line (file)))
+  while ((rc = get_dump_line (file, &n)) == GDBM_NO_ERROR)
     {
       char *p;
 
       p = file->linebuf;
       if (*p != '#')
 	return 0;
-      if (n == 0 || *++p != ':')
+      if (*++p != ':')
 	{
 	  file->lblevel = 0;
 	  continue;
@@ -220,10 +228,12 @@ get_parms (struct dump_file *file)
       file->lblevel = 0;
     }
 
+  if (rc == GDBM_FILE_EOF && file->buflevel > 0)
+    rc = GDBM_NO_ERROR;
   if (file->buffer)
     file->buffer[file->buflevel] = 0;
   
-  return ferror (file->fp) ? GDBM_FILE_READ_ERROR : 0;
+  return rc;
 }
 
 static int
