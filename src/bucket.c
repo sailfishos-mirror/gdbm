@@ -638,8 +638,9 @@ _gdbm_split_bucket (GDBM_FILE dbf, int next_insert)
       dbf->bucket_dir = _gdbm_bucket_dir (dbf, next_insert);
       
       /* Invalidate old cache entry. */
-      old_bucket.av_adr  = dbf->cache_mru->ca_adr;
-      old_bucket.av_size = dbf->header->bucket_size;
+      avail_elem_init (&old_bucket,
+		       dbf->header->bucket_size,
+		       dbf->cache_mru->ca_adr);
       cache_elem_free (dbf, dbf->cache_mru);
       
       /* Set dbf->bucket to the proper bucket. */

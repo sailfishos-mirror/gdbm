@@ -72,6 +72,15 @@ typedef struct
   off_t  av_adr;                /* The file address of the available block. */
 } avail_elem;
 
+static inline void
+avail_elem_init (avail_elem *elem, int size, off_t adr)
+{
+  /* Make sure any padding in elem is filled with 0. */
+  memset (elem, 0, sizeof (*elem));
+  elem->av_size = size;
+  elem->av_adr = adr;
+}
+
 /* This is the actual table. The in-memory images of the avail blocks are
    allocated by malloc using a calculated size.  */
 typedef struct
