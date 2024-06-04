@@ -251,11 +251,6 @@ main (int argc, char **argv)
   filename = argv[0];
   if (argc == 2)
     dbname = argv[1];
-  else if (oflags & GDBM_WRCREAT)
-    {
-      error (_("-U requires DB_FILE to be supplied"));
-      exit (EXIT_USAGE);
-    }
   else
     dbname = NULL;
 

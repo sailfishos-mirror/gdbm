@@ -4112,11 +4112,12 @@ Replace existing keys.  This option can be used only together with
 
 @item -U
 @itemx --update
-Update an existing database.  The database name must be given in the
-second argument to @command{gdbm_load}.  The key/value pairs from the
+Update an existing database.  The key/value pairs from the
 dump file will be added to that database, without removing the
-existing keys.  To overwrite the existing keys from the dump file, use
-@option{--update --replace}.
+existing keys.  To overwrite keys that are duplicated in the dump
+file, use @option{--update --replace}.
+
+If the database does not exist, it will be created.
 
 @item -u @var{owner}[:[@var{group}]]
 @itemx --user=@var{owner}[:[@var{group}]]
