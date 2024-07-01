@@ -214,6 +214,10 @@ extern int gdbm_load (GDBM_FILE *, const char *, int replace,
 extern int gdbm_load_from_file (GDBM_FILE *, FILE *, int replace,
 				int meta_flags,
 				unsigned long *line);
+extern int gdbm_load_from_file_ext (GDBM_FILE *pdbf, FILE *fp,
+				    int mode, int replace,
+				    int meta_mask,
+				    unsigned long *line);
 
 extern int gdbm_copy_meta (GDBM_FILE dst, GDBM_FILE src);
 

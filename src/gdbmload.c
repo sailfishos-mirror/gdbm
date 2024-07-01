@@ -412,7 +412,7 @@ _gdbm_str2fmt (char const *str)
 
 static int
 _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
-		 int replace, int meta_mask)
+		 int mode, int replace, int meta_mask)
 {
   char *param = NULL;
   int rc;
@@ -443,13 +443,12 @@ _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
       
   if (!dbf)
     {
-      int flags = replace ? GDBM_WRCREAT : GDBM_NEWDB;
       const char *filename = getparm (file->header, "file");
       
       if (!filename)
 	return GDBM_NO_DBNAME;
 
-      tmp = gdbm_open (filename, 0, flags | format, 0600, NULL);
+      tmp = gdbm_open (filename, 0, mode | format, 0600, NULL);
       if (!tmp)
 	return gdbm_errno;
       dbf = tmp;
@@ -614,15 +613,19 @@ gdbm_load_bdb_dump (struct dump_file *file, GDBM_FILE dbf, int replace)
 }
 
 int
-gdbm_load_from_file (GDBM_FILE *pdbf, FILE *fp, int replace,
-		     int meta_mask,
-		     unsigned long *line)
+gdbm_load_from_file_ext (GDBM_FILE *pdbf, FILE *fp,
+			 int mode, int replace,
+			 int meta_mask,
+			 unsigned long *line)
 {
   struct dump_file df;
   int rc;
 
-  if (!pdbf || !fp)
-    return EINVAL;
+  if (!pdbf || !fp || (mode & GDBM_OPENMASK) == GDBM_READER)
+    {
+      GDBM_SET_ERRNO (NULL, GDBM_ERR_USAGE, FALSE);
+      return -1;
+    }
 
   /* Guess input file format */
   rc = fgetc (fp);
@@ -654,7 +657,7 @@ gdbm_load_from_file (GDBM_FILE *pdbf, FILE *fp, int replace,
       rc = gdbm_load_bdb_dump (&df, *pdbf, replace);
     }
   else
-    rc = _gdbm_load_file (&df, *pdbf, pdbf, replace, meta_mask);
+    rc = _gdbm_load_file (&df, *pdbf, pdbf, mode, replace, meta_mask);
   dump_file_free (&df);
   if (rc)
     {
@@ -664,6 +667,18 @@ gdbm_load_from_file (GDBM_FILE *pdbf, FILE *fp, int replace,
       return -1;
     }
   return 0;
+}
+
+int
+gdbm_load_from_file (GDBM_FILE *pdbf, FILE *fp, int replace,
+		     int meta_mask,
+		     unsigned long *line)
+{
+  return gdbm_load_from_file_ext (pdbf, fp,
+				  replace ? GDBM_WRCREAT : GDBM_NEWDB,
+				  replace,
+				  meta_mask,
+				  line);
 }
 
 int

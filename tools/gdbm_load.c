@@ -283,11 +283,11 @@ main (int argc, char **argv)
 	error (_("gdbm_setopt failed: %s"), gdbm_strerror (gdbm_errno));
     }
   
-  rc = gdbm_load_from_file (&dbf, fp, replace,
-			    no_meta_option ?
-			      (GDBM_META_MASK_MODE | GDBM_META_MASK_OWNER) :
-			      meta_mask,
-			    &err_line);
+  rc = gdbm_load_from_file_ext (&dbf, fp, oflags, replace,
+				no_meta_option ?
+				(GDBM_META_MASK_MODE | GDBM_META_MASK_OWNER) :
+				meta_mask,
+				&err_line);
   if (rc)
     {
       switch (gdbm_errno)
@@ -323,7 +323,7 @@ main (int argc, char **argv)
 	    gdbm_perror (_("gdbm_setopt failed"));
 	  else
 	    {
-	      printf ("%s: created %s\n", progname, dbname);
+	      printf ("%s: loaded %s\n", progname, dbname);
 	      free (dbname);
 	    }
 	}

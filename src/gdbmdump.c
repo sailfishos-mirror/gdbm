@@ -153,7 +153,7 @@ gdbm_dump_to_file (GDBM_FILE dbf, FILE *fp, int format)
 
     default:
       GDBM_SET_ERRNO (NULL, GDBM_BAD_OPEN_FLAGS, FALSE);
-      return EINVAL;
+      return -1;
     }
   
   if (rc == 0 && ferror (fp))

@@ -17,6 +17,18 @@ The --replace (-r) is valid only when used together with --update.
 
 * Use getline in gdbmtool shell.
 
+* New function: gdbm_load_from_file_ext
+
+In contrast to gdbm_load and gdbm_load_from_file, which derive
+the value of the flag parameter for gdbm_open from the value
+of their "replace" argument, this function allows the caller to
+specify it explicitly.  The prototype is:
+
+  int gdbm_load_from_file_ext (GDBM_FILE *pdbf, FILE *fp,
+			       int flags, int replace,
+			       int meta_mask,
+			       unsigned long *line);
+
 * Bugfixes
 
 ** Fix binary dump format for key and/or data of zero size.

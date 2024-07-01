@@ -1095,11 +1095,13 @@ The permissions to use when creating the output file (@pxref{open,,open a file,o
     unsigned long *@var{errline})
 Loads data from the dump file @var{filename} into the database pointed
 to by @var{pdbf}.  The latter can point to @code{NULL}, in which case
-the function will try to create a new database.  If it succeeds, the
-function will return, in the memory location pointed to by @var{pdbf},
-a pointer to the newly created database.  If the dump file carries no
-information about the original database file name, the function will
-set @code{gdbm_errno} to @code{GDBM_NO_DBNAME} and return
+the function will try to open an existing database, if @var{flag} is
+@code{GDBM_REPLACE}, or create a new one, if @var{flag} is
+@code{GDBM_INSERT} or if the database file does not exit.  If it
+succeeds, the function will return, in the memory location pointed to
+by @var{pdbf}, a pointer to the newly created database.  If the dump
+file carries no information about the original database file name, the
+function will set @code{gdbm_errno} to @code{GDBM_NO_DBNAME} and return
 @code{-1}, indicating failure.
 
 The @var{flag} has the same meaning as the @var{flag} argument
@@ -1194,13 +1196,39 @@ Format of the dump file.  See the @var{format} argument to the
 @end table
 @end deftypefn
 
+@deftypefn {gdbm interface} int gdbm_load_from_file_ext (GDBM_FILE *@var{pdbf}, @
+    FILE *@var{fp}, int @var{flags}, int @var{replace}, int @var{meta_mask}, @
+    unsigned long *@var{line})
+This is an alternative entry point to @code{gdbm_load}.  It reads the
+dump from @var{fp}, which must be a file open for reading.  The
+@var{flags} argument gives flags for @code{gdbm_open} call
+(@pxref{Open}).  It is used if @var{pdbf} points to @code{NULL}, i.e. the
+database has not been open yet.  The rest of arguments is the same as
+for @code{gdbm_load}.
+
+The function returns 0 on success.  On error it returns -1 and sets
+@code{gdbm_errno} to one of error codes (@pxref{Error codes}).  In
+particular, @code{GDBM_ERR_USAGE} is returned if:
+
+@itemize @bullet
+@item @var{pdbf} is @code{NULL}.
+@item @var{fp} is @code{NULL}.
+@item lower 7 bits of @var{flags} have the value @code{GDBM_READER}.
+@end itemize
+@end deftypefn
+
 @deftypefn {gdbm interface} int gdbm_load_from_file (GDBM_FILE *@var{pdbf}, @
     FILE *@var{fp}, int @var{replace}, int @var{meta_mask}, @
     unsigned long *@var{line})
-This is an alternative entry point to @code{gdbm_load}.  It writes the
-output to @var{fp} which must be a file open for writing.  The rest of
-arguments is the same as for @code{gdbm_load} (excepting of course
-@var{flag}, which is not needed in this case).
+Yet another entry point to @code{gdbm_load}.  It is equivalent to
+
+@example
+@group
+gdbm_load_from_file (*pdbf, *fp,
+                     replace ? GDBM_WRCREAT : GDBM_NEWDB,
+                     replace, meta_mask, line);
+@end group
+@end example
 @end deftypefn
 
 @deftypefn {gdbm interface} int gdbm_export (GDBM_FILE @var{dbf}, @
