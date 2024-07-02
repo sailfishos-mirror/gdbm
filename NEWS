@@ -1,10 +1,10 @@
-GNU dbm NEWS -- history of user-visible changes. 2024-06-17
+GNU dbm NEWS -- history of user-visible changes. 2024-07-02
 Copyright (C) 1990-2024 Free Software Foundation, Inc.
 See the end of file for copying conditions.
 
 Please send gdbm bug reports to <bug-gdbm@gnu.org>.
 
-Version 1.23.90 (git)
+Version 1.24, 2024-07-02
 
 * New gdbm_load option: --update
 
@@ -37,7 +37,7 @@ specify it explicitly.  The prototype is:
    (see https://puszcza.gnu.org.ua/bugs/?566)
 ** Fix possible buffer underflow in gdbmload.
 ** Ensure any padding bytes in avail_elem structure are filled with 0.
-
+   (fixes https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1031276)
 ** Improve the documentation.
 
 Version 1.23, 2022-02-04
