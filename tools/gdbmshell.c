@@ -31,6 +31,7 @@
 #ifdef HAVE_LOCALE_H
 # include <locale.h>
 #endif
+#include <assert.h>
 
 static GDBM_FILE gdbm_file = NULL;   /* Database to operate upon */
 static datum key_data;               /* Current key */
@@ -869,6 +870,25 @@ getnum (int *pnum, char *arg, char **endp)
   return 0;
 }
 
+static int
+get_bucket_num (int *pnum, char *arg, struct locus const *loc)
+{
+  int n;
+
+  if (getnum (&n, arg, NULL))
+    return GDBMSHELL_SYNTAX;
+
+  if (n >= GDBM_DIR_COUNT (gdbm_file))
+    {
+      lerror (loc,
+	      _("bucket number out of range (0..%lu)"),
+	      GDBM_DIR_COUNT (gdbm_file));
+      return GDBMSHELL_SYNTAX;
+    }
+  *pnum = n;
+  return GDBMSHELL_OK;
+}
+
 /* bucket NUM - print a bucket and set it as a current one.
    Uses print_current_bucket_handler */
 static int
@@ -884,16 +904,9 @@ print_bucket_begin (struct command_param *param,
 
   if (param->argc == 1)
     {
-      if (getnum (&n, PARAM_STRING (param, 0), NULL))
-	return GDBMSHELL_SYNTAX;
-
-      if (n >= GDBM_DIR_COUNT (gdbm_file))
-	{
-	  lerror (PARAM_LOCPTR (param, 0),
-		  _("bucket number out of range (0..%lu)"),
-		  GDBM_DIR_COUNT (gdbm_file));
-	  return GDBMSHELL_SYNTAX;
-	}
+      if ((rc = get_bucket_num (&n, PARAM_STRING (param, 0),
+				PARAM_LOCPTR (param, 0))) != GDBMSHELL_OK)
+	return rc;
     }
   else if (!gdbm_file->bucket)
     n = 0;
@@ -1561,6 +1574,310 @@ list_handler (struct command_param *param GDBM_ARG_UNUSED,
     return list_bucket_keys (cenv);
   else
     return list_all_keys (cenv);
+}
+
+/* An entry describing colliding elements in a bucket. */
+struct collision_entry
+{
+  int hash_value;         /* Hash value. */
+  int nindex;             /* Number of element indices in index[] array.
+			     When gathering collision statistics, this
+			     field keeps index of the bucket element with
+			     that hash value.  In this case, index is
+			     NULL. */
+  int *index;             /* Indices of colliding elements.  It points to
+			     the index array of the collision structure that
+			     holds this entry. */
+};
+
+/* The collision structure describes collisions in a bucket. */
+struct collision
+{
+  struct collision_entry *entries; /* Actual collision statistics. */
+  int nentries;                    /* Number of elements in entries[] */
+  int maxentries;                  /* Capacity of the entries array. */
+  int total;                       /* Total number of colliding elements. */
+  int index[1];                    /* Storage for element indices in
+				      entries. */
+};
+
+/* Allocate a new collision structure. */
+static struct collision *
+collision_alloc (int maxentries)
+{
+  struct collision *ret;
+
+  ret = calloc (1, sizeof (ret[0]) + (maxentries - 1) * sizeof (ret->index[0]));
+  ret->entries = calloc (maxentries, sizeof (ret->entries[0]));
+  ret->maxentries = maxentries;
+  ret->nentries = 0;
+  return ret;
+}
+
+/* Free a collision object. */
+static void
+collision_free (struct collision *col)
+{
+  free (col->entries);
+  free (col);
+}
+
+/* Add a new entry to the collision object being built. */
+static void
+collision_add (struct collision *col, int i, int hash_value)
+{
+  struct collision_entry *ent;
+
+  assert (col->nentries < col->maxentries);
+  ent = &col->entries[col->nentries];
+  ent->index = NULL;
+  ent->nindex = i;
+  ent->hash_value = hash_value;
+  col->nentries++;
+}
+
+/* Compare two collision entries. */
+static int
+colcmp (const void *a, const void *b)
+{
+  struct collision_entry const *ac = a;
+  struct collision_entry const *bc = b;
+  int d = ac->hash_value - bc->hash_value;
+  if (d == 0)
+    d = ac->nindex - bc->nindex;
+  return d;
+}
+
+/* Return collision statistics for the given bucket. */
+static struct collision *
+get_bucket_collisions (hash_bucket *bucket)
+{
+  int i, n;
+  struct collision *c;
+
+  /*
+   * Create a collision object and gather information about used bucket
+   * elements.
+   */
+  c = collision_alloc (gdbm_file->header->bucket_elems);
+  for (i = 0; i < gdbm_file->header->bucket_elems; i++)
+    {
+      if (bucket->h_table[i].hash_value != -1)
+	{
+	  collision_add (c, i, bucket->h_table[i].hash_value);
+	}
+    }
+  if (c->nentries == 0)
+    {
+      /* No elements used: return NULL. */
+      collision_free (c);
+      return NULL;
+    }
+
+  /* Sort entries by their hash value. */
+  qsort (c->entries, c->nentries, sizeof (c->entries[0]), colcmp);
+
+  /*
+   * Coalesce entries having same hash_value and remove those with
+   * unique hash_value.
+   */
+  for (i = n = 0; i < c->nentries; )
+    {
+      int j;
+      int hash_value = c->entries[i].hash_value;
+      for (j = 1; i+j < c->nentries; j++)
+	if (c->entries[i+j].hash_value != hash_value)
+	  break;
+      if (j == 1)
+	{
+	  /* Remove entry */
+	  memmove (&c->entries[i], &c->entries[i+1],
+		   (c->nentries - i) * sizeof (c->entries[0]));
+	  c->nentries--;
+	}
+      else
+	{
+	  int k;
+
+	  /* Gather colliding indices. */
+	  c->entries[i].index = &c->index[n];
+	  c->entries[i].index[0] = c->entries[i].nindex;
+	  for (k = 1; k < j; k++)
+	    c->entries[i].index[k] = c->entries[i+k].nindex;
+	  c->entries[i].nindex = j;
+	  n += j;
+
+	  /* Remove unneeded entries. */
+	  if (i + j < c->nentries)
+	    memmove (&c->entries[i+1], &c->entries[i+j],
+		     (c->nentries - (i + j)) * sizeof (c->entries[0]));
+	  c->nentries -= j - 1;
+	  c->total += j;
+
+	  /* Increase collision index. */
+	  i++;
+	}
+    }
+
+  return c;
+}
+
+static void
+print_current_bucket_collisions (struct command_environ *cenv)
+{
+  struct collision *c = get_bucket_collisions (gdbm_file->bucket);
+  if (c)
+    {
+      FILE *fp = cenv->fp;
+      int i, j;
+
+      fprintf (fp, "******* ");
+      fprintf (fp, _("Bucket #%d, collisions: %d"), gdbm_file->bucket_dir,
+	       c->nentries);
+      fprintf (fp, " **********\n\n");
+
+      for (i = 0; i < c->nentries; i++)
+	{
+	  fprintf (fp, "* Hash %8x, %d:\n\n",
+		   c->entries[i].hash_value,
+		   c->entries[i].nindex);
+	  for (j = 0; j < c->entries[i].nindex; j++)
+	    {
+	      datum key;
+	      int elem_loc = c->entries[i].index[j];
+
+	      key.dsize = gdbm_file->bucket->h_table[elem_loc].key_size;
+	      key.dptr = _gdbm_read_entry (gdbm_file, elem_loc);
+	      if (!key.dptr)
+		{
+		  dberror ("%s", _("error reading entry"));
+		  collision_free (c);
+		  return;
+		}
+	      fprintf (fp, "Location: %d\n", elem_loc);
+	      datum_format (fp, &key, dsdef[DS_KEY]);
+	      fputc ('\n', fp);
+	      fputc ('\n', fp);
+	    }
+	}
+      collision_free (c);
+    }
+}
+
+static int
+get_bucket_numbers (struct command_param *param, int *ret_from, int *ret_to)
+{
+  int n_from = -1, n_to = -1;
+  int rc;
+
+  switch (param->argc)
+    {
+    case 2:
+      if ((rc = get_bucket_num (&n_to, PARAM_STRING (param, 1),
+				PARAM_LOCPTR (param, 1))) != GDBMSHELL_OK)
+	return rc;
+    case 1:
+      if ((rc = get_bucket_num (&n_from, PARAM_STRING (param, 0),
+				PARAM_LOCPTR (param, 0))) != GDBMSHELL_OK)
+	return rc;
+      break;
+    case 0:
+      break;
+    }
+
+  if (n_from != -1)
+    {
+      if (n_to == -1)
+	n_to = n_from;
+    }
+
+  *ret_from = n_from;
+  *ret_to = n_to;
+
+  return GDBMSHELL_OK;
+}
+
+static int
+collisions_begin (struct command_param *param,
+		  struct command_environ *cenv GDBM_ARG_UNUSED,
+		  size_t *exp_count)
+{
+  int rc = checkdb ();
+  if (rc == GDBMSHELL_OK)
+    {
+      if (exp_count)
+	{
+	  int n_from, n_to;
+	  if ((rc = get_bucket_numbers (param, &n_from, &n_to)) == GDBMSHELL_OK)
+	    {
+	      size_t max_lines = get_screen_lines ();
+	      size_t num_lines = 0;
+	      int i;
+	      struct collision *c;
+
+	      if (n_from != -1)
+		{
+		  for (i = n_from; i <= n_to; i++)
+		    {
+		      if (_gdbm_get_bucket (gdbm_file, i))
+			{
+			  dberror (_("%s(%d) failed"), "_gdbm_get_bucket", i);
+			  return GDBMSHELL_GDBM_ERR;
+			}
+		      if ((c = get_bucket_collisions (gdbm_file->bucket)) != NULL)
+			{
+			  num_lines += c->nentries * 3 + c->total * 3;
+			  collision_free (c);
+			  if (num_lines > max_lines)
+			    break;
+			}
+		    }
+		}
+	      else if (gdbm_file->bucket)
+		{
+		  if ((c = get_bucket_collisions (gdbm_file->bucket)) != NULL)
+		    {
+		      num_lines += c->nentries * 3 + c->total * 3;
+		      collision_free (c);
+		    }
+		}
+
+	      *exp_count = num_lines;
+	    }
+	}
+    }
+  return rc;
+}
+
+static int
+collisions_handler (struct command_param *param,
+		    struct command_environ *cenv)
+{
+  int n_from = -1, n_to = -1;
+  int rc;
+
+  if ((rc = get_bucket_numbers (param, &n_from, &n_to)) != GDBMSHELL_OK)
+    return rc;
+
+  if (n_from != -1)
+    {
+      int i;
+
+      for (i = n_from; i <= n_to; i++)
+	{
+	  if (_gdbm_get_bucket (gdbm_file, i))
+	    {
+	      dberror (_("%s(%d) failed"), "_gdbm_get_bucket", i);
+	      return GDBMSHELL_GDBM_ERR;
+	    }
+	  print_current_bucket_collisions (cenv);
+	}
+    }
+  else if (!gdbm_file->bucket)
+    fprintf (cenv->fp, _("no current bucket\n"));
+  else
+    print_current_bucket_collisions (cenv);
+  return GDBMSHELL_OK;
 }
 
 /* quit - quit the program */
@@ -2398,6 +2715,20 @@ static struct command command_tab[] = {
     .doc = N_("describe GDBM error code"),
     .tok = T_CMD,
     .handler = perror_handler,
+    .variadic = FALSE,
+    .repeat = REPEAT_NEVER,
+  },
+  {
+    .name = "collisions",
+    .args = {
+      { N_("[BUCKET]"), GDBM_ARG_STRING },
+      { N_("[BUCKET]"), GDBM_ARG_STRING },
+      { NULL }
+    },
+    .doc = N_("find colliding entries in buckets"),
+    .tok = T_CMD,
+    .begin = collisions_begin,
+    .handler = collisions_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
   },

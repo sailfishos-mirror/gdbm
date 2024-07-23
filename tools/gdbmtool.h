@@ -71,8 +71,8 @@ typedef struct locus gdbm_yyltype_t;
 #define YY_LOCATION_PRINT(File, Loc) locus_print (File, &(Loc))
 
 void locus_print (FILE *fp, struct locus const *loc);
-void vlerror (struct locus *loc, const char *fmt, va_list ap);
-void lerror (struct locus *loc, const char *fmt, ...)
+void vlerror (struct locus const *loc, const char *fmt, va_list ap);
+void lerror (struct locus const *loc, const char *fmt, ...)
 	   GDBM_PRINTFLIKE (2, 3);
 
 void terror (const char *fmt, ...)

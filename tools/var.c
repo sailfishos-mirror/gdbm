@@ -183,7 +183,7 @@ static struct variable vartab[] = {
     .type = VART_STRING,
     .sethook = errorexit_sethook,
     .typeconv = errormask_typeconv,
-    .freehook = errormask_freehook    
+    .freehook = errormask_freehook
   },
   {
     .name = "errormask",
@@ -211,7 +211,7 @@ varfind (const char *name)
   for (vp = vartab; vp->name; vp++)
     if (strcmp (vp->name, name) == 0)
       return vp;
-  
+
   return NULL;
 }
 
@@ -248,28 +248,28 @@ s2b (union value *vp, void *val, int flags)
   int i;
   unsigned long n;
   char *p;
-  
+
   for (i = 0; trueval[i]; i++)
     if (strcasecmp (trueval[i], val) == 0)
       {
 	vp->bool = 1;
 	return VAR_OK;
       }
-  
+
   for (i = 0; falseval[i]; i++)
     if (strcasecmp (falseval[i], val) == 0)
       {
 	vp->bool = 0;
 	return VAR_OK;
       }
-  
+
   n = strtoul (val, &p, 0);
   if (*p)
     return VAR_ERR_BADTYPE;
   vp->bool = !!n;
   return VAR_OK;
 }
-  
+
 static int
 s2i (union value *vp, void *val, int flags)
 {
@@ -312,7 +312,7 @@ i2b (union value *vp, void *val, int flags)
 }
 
 static setvar_t setvar[3][3] = {
-            /*    s     b    i */
+	    /*    s     b    i */
   /* s */    {   s2s,  b2s, i2s },
   /* b */    {   s2b,  b2b, i2b },
   /* i */    {   s2i,  b2i, i2i }
@@ -324,7 +324,7 @@ variable_set (const char *name, int type, void *val)
   struct variable *vp = varfind (name);
   int rc;
   union value v, *valp;
-  
+
   if (!vp)
     return VAR_ERR_NOTDEF;
 
@@ -334,7 +334,7 @@ variable_set (const char *name, int type, void *val)
       rc = setvar[vp->type][type] (&v, val, vp->flags);
       if (rc)
 	return rc;
-      valp = &v; 
+      valp = &v;
     }
   else
     {
@@ -342,7 +342,7 @@ variable_set (const char *name, int type, void *val)
 	return VAR_ERR_BADVALUE;
       valp = NULL;
     }
-  
+
   if (vp->sethook && (rc = vp->sethook (vp, valp)) != VAR_OK)
     return rc;
 
@@ -358,7 +358,7 @@ variable_set (const char *name, int type, void *val)
       vp->v = v;
       vp->flags |= VARF_SET;
     }
-  
+
   return VAR_OK;
 }
 
@@ -367,7 +367,7 @@ variable_unset (const char *name)
 {
   struct variable *vp = varfind (name);
   int rc;
-    
+
   if (!vp)
     return VAR_ERR_NOTDEF;
   if (vp->flags & VARF_PROT)
@@ -393,7 +393,7 @@ variable_get (const char *name, int type, void **val)
 
   if (!vp)
     return VAR_ERR_NOTDEF;
-  
+
   if (!VAR_IS_SET (vp))
     return VAR_ERR_NOTSET;
 
@@ -406,20 +406,23 @@ variable_get (const char *name, int type, void **val)
       else
 	return VAR_ERR_BADTYPE;
     }
-      
-  switch (vp->type)
-    {
-    case VART_STRING:
-      *val = vp->v.string;
-      break;
 
-    case VART_BOOL:
-      *(int*)val = vp->v.bool;
-      break;
-      
-    case VART_INT:
-      *(int*)val = vp->v.num;
-      break;
+  if (val)
+    {
+      switch (vp->type)
+	{
+	case VART_STRING:
+	  *val = vp->v.string;
+	  break;
+
+	case VART_BOOL:
+	  *(int*)val = vp->v.bool;
+	  break;
+
+	case VART_INT:
+	  *(int*)val = vp->v.num;
+	  break;
+	}
     }
 
   return VAR_OK;
@@ -438,13 +441,13 @@ variable_print_all (FILE *fp)
   struct variable *vp;
   char *s;
   static int sorted;
-  
+
   if (!sorted)
     {
       qsort (vartab, ARRAY_SIZE (vartab) - 1, sizeof (vartab[0]), varcmp);
       sorted = 1;
     }
-  
+
   for (vp = vartab; vp->name; vp++)
     {
       if (!VAR_IS_SET (vp))
@@ -459,17 +462,17 @@ variable_print_all (FILE *fp)
 	      fprintf (fp, (vp->flags & VARF_OCTAL) ? "%s=%03o" : "%s=%d",
 		       vp->name, vp->v.num);
 	      break;
-	      
+
 	    case VART_BOOL:
 	      fprintf (fp, "%s%s", vp->v.bool ? "" : "no", vp->name);
 	      break;
-	      
+
 	    case VART_STRING:
 	      fprintf (fp, "%s=\"", vp->name);
 	      for (s = vp->v.string; *s; s++)
 		{
 		  int c;
-		  
+
 		  if (isprint (*s))
 		    fputc (*s, fp);
 		  else if ((c = escape (*s)))
@@ -639,7 +642,7 @@ cachesize_sethook (struct variable *var, union value *v)
   if (v->num < 0)
     return VAR_ERR_BADVALUE;
   return gdbmshell_setopt ("GDBM_SETCACHESIZE", GDBM_SETCACHESIZE, v->num) == 0
-         ? VAR_OK : VAR_ERR_GDBM;
+	 ? VAR_OK : VAR_ERR_GDBM;
 }
 
 static int
@@ -648,7 +651,7 @@ centfree_sethook (struct variable *var, union value *v)
   if (!v)
     return VAR_OK;
   return gdbmshell_setopt ("GDBM_SETCENTFREE", GDBM_SETCENTFREE, v->bool) == 0
-         ? VAR_OK : VAR_ERR_GDBM;
+	 ? VAR_OK : VAR_ERR_GDBM;
 }
 
 static int
@@ -657,7 +660,7 @@ coalesce_sethook (struct variable *var, union value *v)
   if (!v)
     return VAR_OK;
   return gdbmshell_setopt ("GDBM_SETCOALESCEBLKS", GDBM_SETCOALESCEBLKS, v->bool) == 0
-         ? VAR_OK : VAR_ERR_GDBM;
+	 ? VAR_OK : VAR_ERR_GDBM;
 }
 
 const char * const errname[_GDBM_MAX_ERRNO+1] = {
@@ -714,10 +717,10 @@ str2errcode (char const *str)
   int i;
 #define GDBM_PREFIX "GDBM_"
 #define GDBM_PREFIX_LEN (sizeof (GDBM_PREFIX) - 1)
-  
+
   if (strncasecmp (str, GDBM_PREFIX, GDBM_PREFIX_LEN) == 0)
     str += GDBM_PREFIX_LEN;
-  
+
   for (i = 0; i < ARRAY_SIZE (errname); i++)
     if (strcasecmp (errname[i] + GDBM_PREFIX_LEN, str) == 0)
       return i;
@@ -731,7 +734,7 @@ static int
 errormask_sethook (struct variable *var, union value *v)
 {
   char *errmask = var->data;
-  
+
   if (!v || strcmp (v->string, "false") == 0)
     {
       if (var->data)
@@ -746,7 +749,7 @@ errormask_sethook (struct variable *var, union value *v)
 	  errmask = calloc (ERROR_MASK_SIZE, sizeof (char));
 	  var->data = errmask;
 	}
-      
+
       if (strcmp (v->string, "true") == 0)
 	{
 	  memset (errmask, 1, ERROR_MASK_SIZE);
@@ -758,14 +761,14 @@ errormask_sethook (struct variable *var, union value *v)
 	  for (t = strtok (v->string, ","); t; t = strtok (NULL, ","))
 	    {
 	      int len, val, e;
-	      
+
 	      while (t[0] == ' ' || t[0] == '\t')
 		t++;
 	      len = strlen (t);
 	      while (len > 0 && (t[len-1] == ' ' || t[len-1] == '\t'))
 		len--;
 	      t[len] = 0;
-	      
+
 	      if (t[0] == '-')
 		{
 		  val = 0;

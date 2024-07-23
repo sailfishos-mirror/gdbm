@@ -575,7 +575,7 @@ locus_print (FILE *fp, struct locus const *loc)
 }
 
 void
-vlerror (struct locus *loc, const char *fmt, va_list ap)
+vlerror (struct locus const *loc, const char *fmt, va_list ap)
 {
   if (!interactive ())
     fprintf (stderr, "%s: ", progname);
@@ -589,7 +589,7 @@ vlerror (struct locus *loc, const char *fmt, va_list ap)
 }
 
 void
-lerror (struct locus *loc, const char *fmt, ...)
+lerror (struct locus const *loc, const char *fmt, ...)
 {
   va_list ap;
 
