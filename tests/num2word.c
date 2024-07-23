@@ -83,8 +83,7 @@ void
 copy (const char *str, int dch)
 {
   size_t len = strlen (str);
-  if (len + !!dch > bufoff)
-    abort ();
+  assert (len + !!dch <= bufoff);
   if (dch)
     buffer[--bufoff] = dch;
   bufoff -= len;
@@ -137,11 +136,9 @@ void
 format_number (numeral_t num)
 {
   int s = 0;
-  size_t off;
 
   bufoff = bufsize;
   buffer[--bufoff] = 0;
-  off = bufoff;
   delim = 0;
   
   do
@@ -150,12 +147,10 @@ format_number (numeral_t num)
 
       num /= 1000;
       
-      if (s > 0 && ((n && off > bufoff) || num == 0))
+      assert (s < short_scale_max);
+      if (s > 0 && (n || num == 0))
 	copy (short_scale[s], delim);
       s++;
-      
-      if (s > short_scale_max)
-	abort ();
       
       format_1000 (n, num != 0);
     }
@@ -258,8 +253,7 @@ range_add (numeral_t start, numeral_t count)
 	}
       
       range = realloc (range, range_max * sizeof (range[0]));
-      if (!range)
-	abort ();
+      assert (range != NULL);
 
       for (i = range_max; i > n; i--)
 	range_remove (i - 1);
