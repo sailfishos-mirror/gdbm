@@ -1690,10 +1690,17 @@ get_bucket_collisions (hash_bucket *bucket)
 	  break;
       if (j == 1)
 	{
-	  /* Remove entry */
-	  memmove (&c->entries[i], &c->entries[i+1],
-		   (c->nentries - i) * sizeof (c->entries[0]));
-	  c->nentries--;
+	  /* Skip entries with unique hash values. */
+	  for (j = i+1; j < c->nentries; j++)
+	    if (c->entries[j].hash_value == c->entries[j+1].hash_value)
+	      break;
+	  if (j < c->nentries)
+	    {
+	      /* Remove entries */
+	      memmove (&c->entries[i], &c->entries[j],
+		       (c->nentries - j + 1) * sizeof (c->entries[0]));
+	    }
+	  c->nentries -= j - i;
 	}
       else
 	{
