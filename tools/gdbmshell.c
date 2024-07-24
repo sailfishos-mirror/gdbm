@@ -1698,7 +1698,7 @@ get_bucket_collisions (hash_bucket *bucket)
 	    {
 	      /* Remove entries */
 	      memmove (&c->entries[i], &c->entries[j],
-		       (c->nentries - j + 1) * sizeof (c->entries[0]));
+		       (c->nentries - j) * sizeof (c->entries[0]));
 	    }
 	  c->nentries -= j - i;
 	}
