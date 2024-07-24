@@ -19,9 +19,9 @@
 
 #define DEFFMT(name, type, fmt)			\
 static int					\
-name (FILE *fp, void *ptr, int size)            \
+ name (PAGERFILE *fp, void *ptr, int size)	\
 {                                               \
-  fprintf (fp, fmt, *(type*) ptr);              \
+  pager_printf (fp, fmt, *(type*) ptr);		\
   return size;                                  \
 }
 
@@ -38,7 +38,7 @@ DEFFMT (f_float, float, "%f")
 DEFFMT (f_double, double, "%e")
 
 static int
-f_stringz (FILE *fp, void *ptr, int size)
+f_stringz (PAGERFILE *fp, void *ptr, int size)
 {
   wchar_t wc;
   char *str = ptr;
@@ -54,14 +54,14 @@ f_stringz (FILE *fp, void *ptr, int size)
 	{
 	  int c;
 	  if ((c = escape (str[i])))
-	    fprintf (fp, "\\%c", c);
+	    pager_printf (fp, "\\%c", c);
 	  else
-	    fprintf (fp, "\\%03o", *(unsigned char*)(str+i));
+	    pager_printf (fp, "\\%03o", *(unsigned char*)(str+i));
 	  i++;
 	}
       else
 	{
-	  fwrite (str + i, n, 1, fp);
+	  pager_write (fp, str + i, n);
 	  i += n;
 	}
     }
@@ -69,7 +69,7 @@ f_stringz (FILE *fp, void *ptr, int size)
 }
 
 static int
-f_string (FILE *fp, void *ptr, int size)
+f_string (PAGERFILE *fp, void *ptr, int size)
 {
   wchar_t wc;
   char *str = ptr;
@@ -81,21 +81,21 @@ f_string (FILE *fp, void *ptr, int size)
       int n = mbtowc (&wc, &str[i], MB_CUR_MAX);
       if (n == 0)
 	{
-	  fprintf (fp, "\\%03o", *(unsigned char*)(str+i));
+	  pager_printf (fp, "\\%03o", *(unsigned char*)(str+i));
 	  i++;
 	}
       else if (n == -1 || !iswprint (wc))
 	{
 	  int c;
 	  if ((c = escape (str[i])))
-	    fprintf (fp, "\\%c", c);
+	    pager_printf (fp, "\\%c", c);
 	  else
-	    fprintf (fp, "\\%03o", *(unsigned char*)(str+i));
+	    pager_printf (fp, "\\%03o", *(unsigned char*)(str+i));
 	  i++;
 	}
       else
 	{
-	  fwrite (str + i, n, 1, fp);
+	  pager_write (fp, str + i, n);
 	  i += n;
 	}
     }
@@ -250,7 +250,7 @@ dsegm_list_find (struct dsegm *dp, char const *name)
 }
 
 void
-datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
+datum_format (PAGERFILE *fp, datum const *dat, struct dsegm *ds)
 {
   int off = 0;
   char *delim[2];
@@ -258,7 +258,7 @@ datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
   
   if (!ds)
     {
-      fprintf (fp, "%.*s\n", dat->dsize, dat->dptr);
+      pager_printf (fp, "%.*s\n", dat->dsize, dat->dptr);
       return;
     }
 
@@ -273,11 +273,11 @@ datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
 	{
 	case FDEF_FLD:
 	  if (!first_field)
-	    fwrite (delim[1], strlen (delim[1]), 1, fp);
+	    pager_writez (fp, delim[1]);
 	  if (ds->v.field.name)
-	    fprintf (fp, "%s=", ds->v.field.name);
+	    pager_printf (fp, "%s=", ds->v.field.name);
 	  if (ds->v.field.dim > 1)
-	    fprintf (fp, "{ ");
+	    pager_printf (fp, "{ ");
 	  if (ds->v.field.type->format)
 	    {
 	      int i, n;
@@ -285,10 +285,10 @@ datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
 	      for (i = 0; i < ds->v.field.dim; i++)
 		{
 		  if (i)
-		    fwrite (delim[0], strlen (delim[0]), 1, fp);
+		    pager_write (fp, delim[0], strlen (delim[0]));
 		  if (off + ds->v.field.type->size > dat->dsize)
 		    {
-		      fprintf (fp, _("(not enough data)"));
+		      pager_printf (fp, _("(not enough data)"));
 		      off += dat->dsize;
 		      break;
 		    }
@@ -304,7 +304,7 @@ datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
 		}
 	    }
 	  if (ds->v.field.dim > 1)
-	    fprintf (fp, " }");
+	    pager_printf (fp, " }");
 	  first_field = 0;
 	  break;
 	  
@@ -317,6 +317,14 @@ datum_format (FILE *fp, datum const *dat, struct dsegm *ds)
 	  break;
 	}
     }
+}
+
+void
+datum_format_file (FILE *fp, datum const *dat, struct dsegm *ds)
+{
+  PAGERFILE *pager = pager_open (fp, 0, NULL);
+  datum_format (pager, dat, ds);
+  pager_close (pager);
 }
 
 struct xdatum
@@ -524,15 +532,15 @@ datum_scan (datum *dat, struct dsegm *ds, struct kvpair *kv)
 }
 
 void
-dsprint (FILE *fp, int what, struct dsegm *ds)
+dsprint (PAGERFILE *fp, int what, struct dsegm *ds)
 {
   static char *dsstr[] = { "key", "content" };
   int delim;
   
-  fprintf (fp, "define %s", dsstr[what]);
+  pager_printf (fp, "define %s", dsstr[what]);
   if (ds->next)
     {
-      fprintf (fp, " {\n");
+      pager_printf (fp, " {\n");
       delim = '\t';
     }
   else
@@ -542,25 +550,25 @@ dsprint (FILE *fp, int what, struct dsegm *ds)
       switch (ds->type)
 	{
 	case FDEF_FLD:
-	  fprintf (fp, "%c%s", delim, ds->v.field.type->name);
+	  pager_printf (fp, "%c%s", delim, ds->v.field.type->name);
 	  if (ds->v.field.name)
-	    fprintf (fp, " %s", ds->v.field.name);
+	    pager_printf (fp, " %s", ds->v.field.name);
 	  if (ds->v.field.dim > 1)
-	    fprintf (fp, "[%d]", ds->v.field.dim);
+	    pager_printf (fp, "[%d]", ds->v.field.dim);
 	  break;
 	  
 	case FDEF_OFF:
-	  fprintf (fp, "%coffset %d", delim, ds->v.n);
+	  pager_printf (fp, "%coffset %d", delim, ds->v.n);
 	  break;
 
 	case FDEF_PAD:
-	  fprintf (fp, "%cpad %d", delim, ds->v.n);
+	  pager_printf (fp, "%cpad %d", delim, ds->v.n);
 	  break;
 	}
       if (ds->next)
-	fputc (',', fp);
-      fputc ('\n', fp);
+	pager_putc (fp, ',');
+      pager_putc (fp, '\n');
     }
   if (delim == '\t')
-    fputs ("}\n", fp);
+    pager_writeln (fp, "}");
 }

@@ -38,8 +38,8 @@
 struct point
 {
   char *file;             /* file name */
-  unsigned line;          /* line number */  
-  unsigned col;           /* column number */ 
+  unsigned line;          /* line number */
+  unsigned col;           /* column number */
 };
 
 /* Location in input file */
@@ -49,8 +49,8 @@ struct locus
 };
 
 typedef struct locus gdbm_yyltype_t;
- 
-#define YYLTYPE gdbm_yyltype_t 
+
+#define YYLTYPE gdbm_yyltype_t
 
 #define YYLLOC_DEFAULT(Current, Rhs, N)			      \
   do							      \
@@ -92,16 +92,16 @@ struct instream
   char *in_name;           /* Input stream name */
   int in_inter;            /* True if this is an interactive stream */
   ssize_t (*in_read) (instream_t, char*, size_t);
-                           /* Read from stream */
+			   /* Read from stream */
   void (*in_close) (instream_t);
-                           /* Close the stream */
+			   /* Close the stream */
   int (*in_eq) (instream_t, instream_t);
-                           /* Return true if both streams refer to the
+			   /* Return true if both streams refer to the
 			      same input */
   int (*in_history_size) (instream_t);
-                           /* Return size of the history buffer (entries) */
+			   /* Return size of the history buffer (entries) */
   const char *(*in_history_get) (instream_t, int);
-                           /* Get Nth line from the history buffer */
+			   /* Get Nth line from the history buffer */
 };
 
 static inline char const *
@@ -234,7 +234,7 @@ struct command_param
   struct gdbmarg **argv;
   struct gdbmarg *vararg;
 };
-  
+
 #define HANDLER_PARAM_INITIALIZER { 0, 0, NULL, NULL }
 
 #define PARAM_LOCPTR(p,n) (&(p)->argv[n]->loc)
@@ -253,9 +253,44 @@ struct gdbmarg *gdbmarg_kvpair (struct kvpair *kvl, struct locus *);
 int gdbmarg_free (struct gdbmarg *arg);
 void gdbmarg_destroy (struct gdbmarg **parg);
 
+enum
+  {
+    mode_initial,
+    mode_transparent,
+    mode_pager
+  };
+
+struct pagerfile
+{
+  FILE *stream;
+  char *pager;
+  int mode;
+  ssize_t maxlines;
+  size_t nlines;
+  char *bufbase;
+  size_t bufsize;
+  size_t bufmax;
+};
+
+typedef struct pagerfile PAGERFILE;
+
+PAGERFILE *pager_open (FILE *stream, size_t maxlines, char const *pager);
+void pager_close (struct pagerfile *pfp);
+ssize_t pager_write (struct pagerfile *pfp, const char *buffer, size_t size);
+ssize_t pager_writez (struct pagerfile *pfp, const char *str);
+ssize_t pager_writeln (struct pagerfile *pfp, const char *str);
+void pager_putc (struct pagerfile *pfp, int c);
+ssize_t pager_vprintf (struct pagerfile *pfp, const char *fmt, va_list ap);
+ssize_t pager_printf (struct pagerfile *pfp, const char *fmt, ...);
+void pager_flush (struct pagerfile *pfp);
+static inline int pager_fileno (struct pagerfile *pfp)
+{
+  return fileno (pfp->stream);
+}
+
 struct command_environ
 {
-  FILE *fp;
+  PAGERFILE *pager;
   void *data;
 };
 
@@ -276,7 +311,7 @@ struct datadef
 {
   char *name;
   int size;
-  int (*format) (FILE *, void *ptr, int size);
+  int (*format) (PAGERFILE *, void *ptr, int size);
   int (*scan) (struct xdatum *xd, char *str);
 };
 
@@ -322,10 +357,10 @@ extern struct dsegm *dsdef[];
 enum
   {
     VAR_OK,           /* operation succeeded */
-    VAR_ERR_NOTSET,   /* Only for variable_get: variable is not set */ 
-    VAR_ERR_NOTDEF,   /* no such variable */ 
+    VAR_ERR_NOTSET,   /* Only for variable_get: variable is not set */
+    VAR_ERR_NOTDEF,   /* no such variable */
     VAR_ERR_BADTYPE,  /* variable cannot be coerced to the requested type
-		 	 (software error) */
+			 (software error) */
     VAR_ERR_BADVALUE, /* Only for variable_set: the value is not valid for
 			 this variable. */
     VAR_ERR_GDBM,     /* GDBM error */
@@ -363,9 +398,10 @@ int yyparse (void);
 void lex_trace (int n);
 void gram_trace (int n);
 
-void datum_format (FILE *fp, datum const *dat, struct dsegm *ds);
+void datum_format (PAGERFILE *fp, datum const *dat, struct dsegm *ds);
+void datum_format_file (FILE *fp, datum const *dat, struct dsegm *ds);
 int datum_scan (datum *dat, struct dsegm *ds, struct kvpair *kv);
-void dsprint (FILE *fp, int what, struct dsegm *ds);
+void dsprint (PAGERFILE *fp, int what, struct dsegm *ds);
 
 char *mkfilename (const char *dir, const char *file, const char *suf);
 char *tildexpand (char *s);
@@ -381,4 +417,3 @@ int gdbmshell_setopt (char *name, int opt, int val);
 
 void variables_init (void);
 void variables_free (void);
-

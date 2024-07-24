@@ -189,20 +189,13 @@ checkdb (void)
 
 static int
 checkdb_begin (struct command_param *param GDBM_ARG_UNUSED,
-	       struct command_environ *cenv GDBM_ARG_UNUSED,
-	       size_t *exp_count GDBM_ARG_UNUSED)
+	       struct command_environ *cenv GDBM_ARG_UNUSED)
 {
   return checkdb ();
 }
 
-static size_t
-bucket_print_lines (hash_bucket *bucket)
-{
-  return 10 + gdbm_file->header->bucket_elems + 3 + bucket->av_count;
-}
-
 static void
-format_key_start (FILE *fp, bucket_element *elt)
+format_key_start (PAGERFILE *fp, bucket_element *elt)
 {
   int size = SMALL < elt->key_size ? SMALL : elt->key_size;
   int i;
@@ -210,9 +203,9 @@ format_key_start (FILE *fp, bucket_element *elt)
   for (i = 0; i < size; i++)
     {
       if (isprint (elt->key_start[i]))
-	fprintf (fp, "   %c", elt->key_start[i]);
+	pager_printf (fp, "   %c", elt->key_start[i]);
       else
-	fprintf (fp, " %03o", elt->key_start[i]);
+	pager_printf (fp, " %03o", elt->key_start[i]);
     }
 }
 
@@ -238,7 +231,7 @@ bucket_dir_sibling (void)
 
 /* Debug procedure to print the contents of the current hash bucket. */
 static void
-print_bucket (FILE *fp)
+print_bucket (PAGERFILE *pager)
 {
   int index;
   int hash_prefix;
@@ -249,113 +242,88 @@ print_bucket (FILE *fp)
 
   hash_prefix = start << (GDBM_HASH_BITS - gdbm_file->header->dir_bits);
 
-  fprintf (fp, "******* ");
-  fprintf (fp, _("Bucket #%d"), gdbm_file->bucket_dir);
-  fprintf (fp, " **********\n\n");
-  fprintf (fp,
-	   _("address     = %lu\n"
-	     "depth       = %d\n"
-	     "hash prefix = %08x\n"
-	     "references  = %u"),
-	   (unsigned long) adr,
-	   bucket->bucket_bits,
-	   hash_prefix,
-	   dircount);
+  pager_printf (pager, "******* ");
+  pager_printf (pager, _("Bucket #%d"), gdbm_file->bucket_dir);
+  pager_printf (pager, " **********\n\n");
+  pager_printf (pager,
+		_("address     = %lu\n"
+		  "depth       = %d\n"
+		  "hash prefix = %08x\n"
+		  "references  = %u"),
+		(unsigned long) adr,
+		bucket->bucket_bits,
+		hash_prefix,
+		dircount);
   if (dircount > 1)
     {
-      fprintf (fp, " (%d-%d)", start, start + dircount - 1);
+      pager_printf (pager, " (%d-%d)", start, start + dircount - 1);
     }
-  fprintf (fp, "\n");
+  pager_printf (pager, "\n");
 
-  fprintf (fp,
-	   _("count       = %d\n"
-	     "load factor = %3d\n"),
-	   bucket->count,
-	   bucket->count * 100 / gdbm_file->header->bucket_elems);
+  pager_printf (pager,
+		_("count       = %d\n"
+		  "load factor = %3d\n"),
+		bucket->count,
+		bucket->count * 100 / gdbm_file->header->bucket_elems);
 
-  fprintf (fp, "%s", _("Hash Table:\n"));
-  fprintf (fp,
-	   _("    #    hash value     key size    data size     data adr home  key start\n"));
+  pager_printf (pager, "%s", _("Hash Table:\n"));
+  pager_printf (pager,
+		_("    #    hash value     key size    data size     data adr home  key start\n"));
   for (index = 0; index < gdbm_file->header->bucket_elems; index++)
     {
-      fprintf (fp, " %4d  %12x  %11d  %11d  %11lu %4d", index,
-	       bucket->h_table[index].hash_value,
-	       bucket->h_table[index].key_size,
-	       bucket->h_table[index].data_size,
-	       (unsigned long) bucket->h_table[index].data_pointer,
-	       bucket->h_table[index].hash_value %
-	       gdbm_file->header->bucket_elems);
+      pager_printf (pager, " %4d  %12x  %11d  %11d  %11lu %4d", index,
+		    bucket->h_table[index].hash_value,
+		    bucket->h_table[index].key_size,
+		    bucket->h_table[index].data_size,
+		    (unsigned long) bucket->h_table[index].data_pointer,
+		    bucket->h_table[index].hash_value %
+		    gdbm_file->header->bucket_elems);
       if (bucket->h_table[index].key_size)
 	{
-	  fprintf (fp, " ");
-	  format_key_start (fp, &bucket->h_table[index]);
+	  pager_printf (pager, " ");
+	  format_key_start (pager, &bucket->h_table[index]);
 	}
-      fprintf (fp, "\n");
+      pager_printf (pager, "\n");
     }
 
-  fprintf (fp, _("\nAvail count = %d\n"), bucket->av_count);
-  fprintf (fp, _("Address           size\n"));
+  pager_printf (pager, _("\nAvail count = %d\n"), bucket->av_count);
+  pager_printf (pager, _("Address           size\n"));
   for (index = 0; index < bucket->av_count; index++)
-    fprintf (fp, "%11lu%9d\n",
-	     (unsigned long) bucket->bucket_avail[index].av_adr,
-	     bucket->bucket_avail[index].av_size);
+    pager_printf (pager, "%11lu%9d\n",
+		  (unsigned long) bucket->bucket_avail[index].av_adr,
+		  bucket->bucket_avail[index].av_size);
 }
 
-struct avail_list_counter
-{
-  size_t min_size;
-  size_t lines;
-};
-
-static int
-avail_list_count (avail_block *avblk, off_t off, void *data)
-{
-  struct avail_list_counter *ctr = data;
-
-  ctr->lines += avblk->count;
-  return ctr->lines > ctr->min_size;
-}
-
-static size_t
-_gdbm_avail_list_size (GDBM_FILE dbf, size_t min_size)
-{
-  struct avail_list_counter ctr;
-  ctr.min_size = 0;
-  ctr.lines = 0;
-  gdbm_avail_traverse (dbf, avail_list_count, &ctr);
-  return ctr.lines;
-}
-
 static void
-av_table_display (avail_elem *av_table, int count, FILE *fp)
+av_table_display (avail_elem *av_table, int count, PAGERFILE *pager)
 {
   int i;
 
   for (i = 0; i < count; i++)
     {
-      fprintf (fp, "  %15d   %10lu \n",
-	       av_table[i].av_size, (unsigned long) av_table[i].av_adr);
+      pager_printf (pager, "  %15d   %10lu \n",
+		    av_table[i].av_size, (unsigned long) av_table[i].av_adr);
     }
 }
 
 static int
 avail_list_print (avail_block *avblk, off_t n, void *data)
 {
-  FILE *fp = data;
+  PAGERFILE *pager = data;
 
-  fputc ('\n', fp);
+  pager_putc (pager, '\n');
   if (n == 0)//FIXME
-    fprintf (fp, "%s", _("header block"));
+    pager_writez (pager, _("header block"));
   else
-    fprintf (fp, _("block = %lu"), (unsigned long) n);
-  fprintf (fp, _("\nsize  = %d\ncount = %d\n"),
-	   avblk->size, avblk->count);
-  av_table_display (avblk->av_table, avblk->count, fp);
+    pager_printf (pager, _("block = %lu"), (unsigned long) n);
+  pager_printf (pager, _("\nsize  = %d\ncount = %d\n"),
+		avblk->size, avblk->count);
+  av_table_display (avblk->av_table, avblk->count, pager);
   return 0;
 }
 
 static int
-_gdbm_print_avail_list (FILE *fp, GDBM_FILE dbf)
+_gdbm_print_avail_list (PAGERFILE *fp, GDBM_FILE dbf)
 {
   int rc = gdbm_avail_traverse (dbf, avail_list_print, fp);
   if (rc)
@@ -364,27 +332,27 @@ _gdbm_print_avail_list (FILE *fp, GDBM_FILE dbf)
 }
 
 static void
-_gdbm_print_bucket_cache (FILE *fp, GDBM_FILE dbf)
+_gdbm_print_bucket_cache (PAGERFILE *fp, GDBM_FILE dbf)
 {
   if (dbf->cache_num)
     {
       int i;
       cache_elem *elem;
 
-      fprintf (fp,
+      pager_printf (fp,
 	_("Bucket Cache (size %zu/%zu):\n  Index:         Address  Changed  Data_Hash \n"),
-	       dbf->cache_num, dbf->cache_size);
+		    dbf->cache_num, dbf->cache_size);
       for (elem = dbf->cache_mru, i = 0; elem; elem = elem->ca_next, i++)
 	{
-	  fprintf (fp, "  %5d:  %15lu %7s  %x\n",
-		   i,
-		   (unsigned long) elem->ca_adr,
-		   (elem->ca_changed ? _("True") : _("False")),
-		   elem->ca_data.hash_val);
+	  pager_printf (fp, "  %5d:  %15lu %7s  %x\n",
+			i,
+			(unsigned long) elem->ca_adr,
+			(elem->ca_changed ? _("True") : _("False")),
+			elem->ca_data.hash_val);
 	}
     }
   else
-    fprintf (fp, _("Bucket cache is empty.\n"));
+    pager_writeln (fp, _("Bucket cache is empty."));
 }
 
 static int
@@ -506,11 +474,11 @@ count_handler (struct command_param *param GDBM_ARG_UNUSED,
       if (!p)
 	terror ("%s", _("count buffer overflow"));
       else
-	fprintf (cenv->fp,
-		 ngettext ("There is %s item in the database.\n",
-			   "There are %s items in the database.\n",
-			   count),
-		 p);
+	pager_printf (cenv->pager,
+		      ngettext ("There is %s item in the database.\n",
+				"There are %s items in the database.\n",
+				count),
+		      p);
     }
   return GDBMSHELL_OK;
 }
@@ -540,8 +508,8 @@ fetch_handler (struct command_param *param, struct command_environ *cenv)
   return_data = gdbm_fetch (gdbm_file, PARAM_DATUM (param, 0));
   if (return_data.dptr != NULL)
     {
-      datum_format (cenv->fp, &return_data, dsdef[DS_CONTENT]);
-      fputc ('\n', cenv->fp);
+      datum_format (cenv->pager, &return_data, dsdef[DS_CONTENT]);
+      pager_putc (cenv->pager, '\n');
       datum_free (&return_data);
       return GDBMSHELL_OK;
     }
@@ -579,12 +547,13 @@ firstkey_handler (struct command_param *param, struct command_environ *cenv)
   key_data = gdbm_firstkey (gdbm_file);
   if (key_data.dptr != NULL)
     {
-      datum_format (cenv->fp, &key_data, dsdef[DS_KEY]);
-      fputc ('\n', cenv->fp);
+      datum_format (cenv->pager, &key_data, dsdef[DS_KEY]);
+      pager_putc (cenv->pager, '\n');
 
       return_data = gdbm_fetch (gdbm_file, key_data);
-      datum_format (cenv->fp, &return_data, dsdef[DS_CONTENT]);
-      fputc ('\n', cenv->fp);
+      datum_format (cenv->pager, &return_data, dsdef[DS_CONTENT]);
+      pager_putc (cenv->pager, '\n');
+
 
       datum_free (&return_data);
       return GDBMSHELL_OK;
@@ -592,7 +561,7 @@ firstkey_handler (struct command_param *param, struct command_environ *cenv)
   else if (gdbm_errno == GDBM_ITEM_NOT_FOUND)
     {
       if (!gdbm_error_is_masked (gdbm_errno))
-	fprintf (cenv->fp, _("No such item found.\n"));
+	pager_writez (cenv->pager, _("No such item found.\n"));
     }
   else
     dberror ("%s", _("Can't find first key"));
@@ -615,12 +584,12 @@ nextkey_handler (struct command_param *param, struct command_environ *cenv)
     {
       datum_free (&key_data);
       key_data = return_data;
-      datum_format (cenv->fp, &key_data, dsdef[DS_KEY]);
-      fputc ('\n', cenv->fp);
+      datum_format (cenv->pager, &key_data, dsdef[DS_KEY]);
+      pager_putc (cenv->pager, '\n');
 
       return_data = gdbm_fetch (gdbm_file, key_data);
-      datum_format (cenv->fp, &return_data, dsdef[DS_CONTENT]);
-      fputc ('\n', cenv->fp);
+      datum_format (cenv->pager, &return_data, dsdef[DS_CONTENT]);
+      pager_putc (cenv->pager, '\n');
 
       datum_free (&return_data);
       return GDBMSHELL_OK;
@@ -647,7 +616,7 @@ reorganize_handler (struct command_param *param GDBM_ARG_UNUSED,
       return GDBMSHELL_GDBM_ERR;
     }
   else
-    fprintf (cenv->fp, "%s\n", _("Reorganization succeeded."));
+    pager_writeln (cenv->pager, _("Reorganization succeeded."));
   return GDBMSHELL_OK;
 }
 
@@ -765,28 +734,28 @@ recover_handler (struct command_param *param, struct command_environ *cenv)
 
   if (rc == 0)
     {
-      fprintf (cenv->fp, _("Recovery succeeded.\n"));
+      pager_writeln (cenv->pager, _("Recovery succeeded."));
       if (summary)
 	{
-	  fprintf (cenv->fp,
-		   _("Keys recovered: %lu, failed: %lu, duplicate: %lu\n"),
-		   (unsigned long) rcvr.recovered_keys,
-		   (unsigned long) rcvr.failed_keys,
-		   (unsigned long) rcvr.duplicate_keys);
-	  fprintf (cenv->fp,
-		   _("Buckets recovered: %lu, failed: %lu\n"),
-		   (unsigned long) rcvr.recovered_buckets,
-		   (unsigned long) rcvr.failed_buckets);
+	  pager_printf (cenv->pager,
+			_("Keys recovered: %lu, failed: %lu, duplicate: %lu\n"),
+			(unsigned long) rcvr.recovered_keys,
+			(unsigned long) rcvr.failed_keys,
+			(unsigned long) rcvr.duplicate_keys);
+	  pager_printf (cenv->pager,
+			_("Buckets recovered: %lu, failed: %lu\n"),
+			(unsigned long) rcvr.recovered_buckets,
+			(unsigned long) rcvr.failed_buckets);
 	}
 
       if (rcvr.backup_name)
 	{
-	  fprintf (cenv->fp,
-		   _("Original database preserved in file %s"),
-		   rcvr.backup_name);
+	  pager_printf (cenv->pager,
+			_("Original database preserved in file %s"),
+			rcvr.backup_name);
 	  free (rcvr.backup_name);
 	}
-      fputc ('\n', cenv->fp);
+      pager_putc (cenv->pager, '\n');
     }
   else
     {
@@ -798,52 +767,21 @@ recover_handler (struct command_param *param, struct command_environ *cenv)
 
 /* avail - print available list */
 static int
-avail_begin (struct command_param *param GDBM_ARG_UNUSED,
-	     struct command_environ *cenv GDBM_ARG_UNUSED,
-	     size_t *exp_count)
-{
-  int rc = checkdb ();
-  if (rc == GDBMSHELL_OK)
-    {
-      if (exp_count)
-	*exp_count = _gdbm_avail_list_size (gdbm_file, SIZE_T_MAX);
-    }
-  return rc;
-}
-
-static int
 avail_handler (struct command_param *param GDBM_ARG_UNUSED,
 	       struct command_environ *cenv)
 {
-  return _gdbm_print_avail_list (cenv->fp, gdbm_file);
+  return _gdbm_print_avail_list (cenv->pager, gdbm_file);
 }
 
 /* print current bucket */
-static int
-print_current_bucket_begin (struct command_param *param GDBM_ARG_UNUSED,
-			    struct command_environ *cenv GDBM_ARG_UNUSED,
-			    size_t *exp_count)
-{
-  int rc = checkdb ();
-
-  if (rc == GDBMSHELL_OK)
-    {
-      if (exp_count)
-	*exp_count = gdbm_file->bucket
-		       ? bucket_print_lines (gdbm_file->bucket) + 3
-		       : 1;
-    }
-  return rc;
-}
-
 static int
 print_current_bucket_handler (struct command_param *param,
 			      struct command_environ *cenv)
 {
   if (!gdbm_file->bucket)
-    fprintf (cenv->fp, _("no current bucket\n"));
+    pager_writeln (cenv->pager, _("no current bucket"));
   else
-    print_bucket (cenv->fp);
+    print_bucket (cenv->pager);
   return GDBMSHELL_OK;
 }
 
@@ -893,8 +831,7 @@ get_bucket_num (int *pnum, char *arg, struct locus const *loc)
    Uses print_current_bucket_handler */
 static int
 print_bucket_begin (struct command_param *param,
-		    struct command_environ *cenv GDBM_ARG_UNUSED,
-		    size_t *exp_count)
+		    struct command_environ *cenv GDBM_ARG_UNUSED)
 {
   int rc;
   int n = -1;
@@ -920,15 +857,12 @@ print_bucket_begin (struct command_param *param,
 	}
     }
 
-  if (exp_count)
-    *exp_count = bucket_print_lines (gdbm_file->bucket) + 3;
   return GDBMSHELL_OK;
 }
 
 static int
 print_sibling_bucket_begin (struct command_param *param,
-			    struct command_environ *cenv GDBM_ARG_UNUSED,
-			    size_t *exp_count)
+			    struct command_environ *cenv GDBM_ARG_UNUSED)
 {
   int rc, n0, n, bucket_bits;
 
@@ -967,27 +901,10 @@ print_sibling_bucket_begin (struct command_param *param,
       return GDBMSHELL_ERR;
     }
 
-  if (exp_count)
-    *exp_count = bucket_print_lines (gdbm_file->bucket) + 3;
   return GDBMSHELL_OK;
 }
 
 /* dir - print hash directory */
-static int
-print_dir_begin (struct command_param *param GDBM_ARG_UNUSED,
-		 struct command_environ *cenv GDBM_ARG_UNUSED,
-		 size_t *exp_count)
-{
-  int rc;
-
-  if ((rc = checkdb ()) == GDBMSHELL_OK)
-    {
-      if (exp_count)
-	*exp_count = GDBM_DIR_COUNT (gdbm_file) + 3;
-    }
-  return rc;
-}
-
 static size_t
 bucket_count (void)
 {
@@ -1006,62 +923,31 @@ print_dir_handler (struct command_param *param GDBM_ARG_UNUSED,
 {
   int i;
 
-  fprintf (cenv->fp, _("Hash table directory.\n"));
-  fprintf (cenv->fp, _("  Size =  %d.  Capacity = %lu.  Bits = %d,  Buckets = %zu.\n\n"),
-	   gdbm_file->header->dir_size,
-	   GDBM_DIR_COUNT (gdbm_file),
-	   gdbm_file->header->dir_bits,
-	   bucket_count ());
+  pager_writeln (cenv->pager, _("Hash table directory."));
+  pager_printf (cenv->pager,
+		_("  Size =  %d.  Capacity = %lu.  Bits = %d,  Buckets = %zu.\n\n"),
+		gdbm_file->header->dir_size,
+		GDBM_DIR_COUNT (gdbm_file),
+		gdbm_file->header->dir_bits,
+		bucket_count ());
 
-  fprintf (cenv->fp, "#%11s  %8s  %s\n",
-	   _("Index"), _("Hash Pfx"), _("Bucket address"));
+  pager_printf (cenv->pager, "#%11s  %8s  %s\n",
+		_("Index"), _("Hash Pfx"), _("Bucket address"));
   for (i = 0; i < GDBM_DIR_COUNT (gdbm_file); i++)
-    fprintf (cenv->fp, "  %10d: %08x %12lu\n",
-	     i,
-	     i << (GDBM_HASH_BITS - gdbm_file->header->dir_bits),
-	     (unsigned long) gdbm_file->dir[i]);
+    pager_printf (cenv->pager, "  %10d: %08x %12lu\n",
+		  i,
+		  i << (GDBM_HASH_BITS - gdbm_file->header->dir_bits),
+		  (unsigned long) gdbm_file->dir[i]);
 
   return GDBMSHELL_OK;
 }
 
 /* header - print file handler */
 static int
-print_header_begin (struct command_param *param GDBM_ARG_UNUSED,
-		    struct command_environ *cenv GDBM_ARG_UNUSED,
-		    size_t *exp_count)
-{
-  int rc;
-  int n;
-
-  if ((rc = checkdb ()) != GDBMSHELL_OK)
-    return rc;
-
-  switch (gdbm_file->header->header_magic)
-    {
-    case GDBM_OMAGIC:
-    case GDBM_MAGIC:
-      n = 14;
-      break;
-
-    case GDBM_NUMSYNC_MAGIC:
-      n = 19;
-      break;
-
-    default:
-      abort ();
-    }
-
-  if (exp_count)
-    *exp_count = n;
-
-  return GDBMSHELL_OK;
-}
-
-static int
 print_header_handler (struct command_param *param GDBM_ARG_UNUSED,
 		      struct command_environ *cenv)
 {
-  FILE *fp = cenv->fp;
+  PAGERFILE *pager = cenv->pager;
   char const *type;
 
   switch (gdbm_file->header->header_magic)
@@ -1082,29 +968,29 @@ print_header_handler (struct command_param *param GDBM_ARG_UNUSED,
       abort ();
     }
 
-  fprintf (fp, _("\nFile Header: \n\n"));
-  fprintf (fp, _("  type            = %s\n"), type);
-  fprintf (fp, _("  directory start = %lu\n"),
-	   (unsigned long) gdbm_file->header->dir);
-  fprintf (fp, _("  directory size  = %d\n"), gdbm_file->header->dir_size);
-  fprintf (fp, _("  directory depth = %d\n"), gdbm_file->header->dir_bits);
-  fprintf (fp, _("  block size      = %d\n"), gdbm_file->header->block_size);
-  fprintf (fp, _("  bucket elems    = %d\n"), gdbm_file->header->bucket_elems);
-  fprintf (fp, _("  bucket size     = %d\n"), gdbm_file->header->bucket_size);
-  fprintf (fp, _("  header magic    = %x\n"), gdbm_file->header->header_magic);
-  fprintf (fp, _("  next block      = %lu\n"),
+  pager_printf (pager, _("\nFile Header: \n\n"));
+  pager_printf (pager, _("  type            = %s\n"), type);
+  pager_printf (pager, _("  directory start = %lu\n"),
+		(unsigned long) gdbm_file->header->dir);
+  pager_printf (pager, _("  directory size  = %d\n"), gdbm_file->header->dir_size);
+  pager_printf (pager, _("  directory depth = %d\n"), gdbm_file->header->dir_bits);
+  pager_printf (pager, _("  block size      = %d\n"), gdbm_file->header->block_size);
+  pager_printf (pager, _("  bucket elems    = %d\n"), gdbm_file->header->bucket_elems);
+  pager_printf (pager, _("  bucket size     = %d\n"), gdbm_file->header->bucket_size);
+  pager_printf (pager, _("  header magic    = %x\n"), gdbm_file->header->header_magic);
+  pager_printf (pager, _("  next block      = %lu\n"),
 	   (unsigned long) gdbm_file->header->next_block);
 
-  fprintf (fp, _("  avail size      = %d\n"), gdbm_file->avail->size);
-  fprintf (fp, _("  avail count     = %d\n"), gdbm_file->avail->count);
-  fprintf (fp, _("  avail next block= %lu\n"),
+  pager_printf (pager, _("  avail size      = %d\n"), gdbm_file->avail->size);
+  pager_printf (pager, _("  avail count     = %d\n"), gdbm_file->avail->count);
+  pager_printf (pager, _("  avail next block= %lu\n"),
 	   (unsigned long) gdbm_file->avail->next_block);
 
   if (gdbm_file->xheader)
     {
-      fprintf (fp, _("\nExtended Header: \n\n"));
-      fprintf (fp, _("      version = %d\n"), gdbm_file->xheader->version);
-      fprintf (fp, _("      numsync = %u\n"), gdbm_file->xheader->numsync);
+      pager_printf (pager, _("\nExtended Header: \n\n"));
+      pager_printf (pager, _("      version = %d\n"), gdbm_file->xheader->version);
+      pager_printf (pager, _("      numsync = %u\n"), gdbm_file->xheader->numsync);
     }
 
   return GDBMSHELL_OK;
@@ -1150,7 +1036,7 @@ struct snapshot_status_info
 {
   char const *code;
   char const *descr;
-  void (*fn) (FILE *, char const *, char const *);
+  void (*fn) (PAGERFILE *, char const *, char const *);
 };
 
 #define MODBUFSIZE 10
@@ -1199,7 +1085,7 @@ error_push (struct error_entry *stk, int *tos, int maxstk, char const *text,
 }
 
 static void
-print_snapshot (char const *snapname, FILE *fp)
+print_snapshot (char const *snapname, PAGERFILE *fp)
 {
   struct stat st;
   char buf[MODBUFSIZE];
@@ -1222,13 +1108,13 @@ print_snapshot (char const *snapname, FILE *fp)
 		      0, 0);
 	}
 
-      fprintf (fp, "%s: ", snapname);
-      fprintf (fp, "%03o %s ", st.st_mode & 0777,
-	       decode_mode (st.st_mode, buf));
+      pager_printf (fp, "%s: ", snapname);
+      pager_printf (fp, "%03o %s ", st.st_mode & 0777,
+		    decode_mode (st.st_mode, buf));
 #if HAVE_STRUCT_STAT_ST_MTIM
-      fprintf (fp, "%ld.%09ld", st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
+      pager_printf (fp, "%ld.%09ld", st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
 #else
-      fprintf (fp, "%ld [%s]", st.st_mtime, _("insufficient precision"));
+      pager_printf (fp, "%ld [%s]", st.st_mtime, _("insufficient precision"));
 #endif
       if (S_ISREG (st.st_mode))
 	{
@@ -1238,15 +1124,15 @@ print_snapshot (char const *snapname, FILE *fp)
 	  if (dbf)
 	    {
 	      if (dbf->xheader)
-		fprintf (fp, " %u", dbf->xheader->numsync);
+		pager_printf (fp, " %u", dbf->xheader->numsync);
 	      else
 		/* TRANSLATORS: Stands for "Not Available". */
-		fprintf (fp, " %s", _("N/A"));
+		pager_printf (fp, " %s", _("N/A"));
 	    }
 	  else if (gdbm_check_syserr (gdbm_errno))
 	    {
 	      if (errno == EACCES)
-		fprintf (fp, " ?");
+		pager_printf (fp, " ?");
 	      else
 		error_push (errs, &errn, ARRAY_SIZE (errs),
 			    N_("can't open database"),
@@ -1261,33 +1147,34 @@ print_snapshot (char const *snapname, FILE *fp)
 	error_push (errs, &errn, ARRAY_SIZE (errs),
 		    N_("not a regular file"),
 		    0, 0);
-      fputc ('\n', fp);
+      pager_putc (fp, '\n');
       for (i = 0; i < errn; i++)
 	{
-	  fprintf (fp, "%s: %s: %s", snapname, _("ERROR"), gettext (errs[i].msg));
+	  pager_printf (fp, "%s: %s: %s", snapname, _("ERROR"), gettext (errs[i].msg));
 	  if (errs[i].gdbm_err)
-	    fprintf (fp, ": %s", gdbm_strerror (errs[i].gdbm_err));
+	    pager_printf (fp, ": %s", gdbm_strerror (errs[i].gdbm_err));
 	  if (errs[i].sys_err)
-	    fprintf (fp, ": %s", strerror (errs[i].sys_err));
-	  fputc ('\n', fp);
+	    pager_printf (fp, ": %s", strerror (errs[i].sys_err));
+	  pager_putc (fp, '\n');
 	}
     }
   else
     {
-      fprintf (fp, _("%s: ERROR: can't stat: %s"), snapname, strerror (errno));
+      pager_printf (fp, _("%s: ERROR: can't stat: %s"),
+		    snapname, strerror (errno));
       return;
     }
 }
 
 static void
-snapshot_print_fn (FILE *fp, char const *sa, char const *sb)
+snapshot_print_fn (PAGERFILE *fp, char const *sa, char const *sb)
 {
   print_snapshot (sa, fp);
   print_snapshot (sb, fp);
 }
 
 static void
-snapshot_err_fn (FILE *fp, char const *sa, char const *sb)
+snapshot_err_fn (PAGERFILE *fp, char const *sa, char const *sb)
 {
   switch (errno)
     {
@@ -1297,13 +1184,13 @@ snapshot_err_fn (FILE *fp, char const *sa, char const *sb)
       break;
 
     case EINVAL:
-      fprintf (fp, "%s.\n",
-	       _("Invalid arguments in call to gdbm_latest_snapshot"));
+      pager_printf (fp, "%s.\n",
+		    _("Invalid arguments in call to gdbm_latest_snapshot"));
       break;
 
     case ENOSYS:
-      fprintf (fp, "%s.\n",
-	       _("Function is not implemented: GDBM is built without crash-tolerance support"));
+      pager_printf (fp, "%s.\n",
+		    _("Function is not implemented: GDBM is built without crash-tolerance support"));
       break;
     }
 }
@@ -1346,14 +1233,14 @@ snapshot_handler (struct command_param *param, struct command_environ *cenv)
 
   if (rc >= 0 && rc < ARRAY_SIZE (snapshot_status_info))
     {
-      fprintf (cenv->fp,
-	       "%s: %s.\n",
-	       snapshot_status_info[rc].code,
-	       gettext (snapshot_status_info[rc].descr));
+      pager_printf (cenv->pager,
+		    "%s: %s.\n",
+		    snapshot_status_info[rc].code,
+		    gettext (snapshot_status_info[rc].descr));
       if (snapshot_status_info[rc].fn)
-	snapshot_status_info[rc].fn (cenv->fp, sa, sb);
+	snapshot_status_info[rc].fn (cenv->pager, sa, sb);
       if (rc == GDBM_SNAPSHOT_OK)
-	print_snapshot (sel, cenv->fp);
+	print_snapshot (sel, cenv->pager);
       res = GDBMSHELL_OK;
     }
   else
@@ -1378,39 +1265,24 @@ hash_handler (struct command_param *param GDBM_ARG_UNUSED,
       int hashval, bucket, off;
       _gdbm_hash_key (gdbm_file, PARAM_DATUM (param, 0),
 		       &hashval, &bucket, &off);
-      fprintf (cenv->fp, _("hash value = %x, bucket #%u, slot %u"),
-	       hashval,
-	       hashval >> (GDBM_HASH_BITS - gdbm_file->header->dir_bits),
-	       hashval % gdbm_file->header->bucket_elems);
+      pager_printf (cenv->pager, _("hash value = %x, bucket #%u, slot %u"),
+		    hashval,
+		    hashval >> (GDBM_HASH_BITS - gdbm_file->header->dir_bits),
+		    hashval % gdbm_file->header->bucket_elems);
     }
   else
-    fprintf (cenv->fp, _("hash value = %x"),
-	     _gdbm_hash (PARAM_DATUM (param, 0)));
-  fprintf (cenv->fp, ".\n");
+    pager_printf (cenv->pager, _("hash value = %x"),
+		  _gdbm_hash (PARAM_DATUM (param, 0)));
+  pager_writez (cenv->pager, ".\n");
   return GDBMSHELL_OK;
 }
 
 /* cache - print the bucket cache */
 static int
-print_cache_begin (struct command_param *param GDBM_ARG_UNUSED,
-		   struct command_environ *cenv GDBM_ARG_UNUSED,
-		   size_t *exp_count)
-{
-  int rc;
-
-  if ((rc = checkdb ()) == GDBMSHELL_OK)
-    {
-      if (exp_count)
-	*exp_count = gdbm_file->cache_num + 1;
-    }
-  return rc;
-}
-
-static int
 print_cache_handler (struct command_param *param GDBM_ARG_UNUSED,
 		     struct command_environ *cenv)
 {
-  _gdbm_print_bucket_cache (cenv->fp, gdbm_file);
+  _gdbm_print_bucket_cache (cenv->pager, gdbm_file);
   return GDBMSHELL_OK;
 }
 
@@ -1419,15 +1291,14 @@ static int
 print_version_handler (struct command_param *param GDBM_ARG_UNUSED,
 		       struct command_environ *cenv)
 {
-  fprintf (cenv->fp, "%s\n", gdbm_version);
+  pager_printf (cenv->pager, "%s\n", gdbm_version);
   return GDBMSHELL_OK;
 }
 
 /* list - List all entries */
 static int
 list_begin (struct command_param *param GDBM_ARG_UNUSED,
-	    struct command_environ *cenv GDBM_ARG_UNUSED,
-	    size_t *exp_count)
+	    struct command_environ *cenv GDBM_ARG_UNUSED)
 {
   int rc;
 
@@ -1446,32 +1317,6 @@ list_begin (struct command_param *param GDBM_ARG_UNUSED,
 	    {
 	      fprintf (stderr, "%s", _("select bucket first\n"));
 	      return GDBMSHELL_ERR;
-	    }
-
-	  if (exp_count)
-	    {
-	      int n = 0, i;
-
-	      for (i = 0; i < gdbm_file->bucket->count; i++)
-		{
-		  if (gdbm_file->bucket->h_table[i].hash_value != -1)
-		    n++;
-		}
-	      *exp_count = n;
-	    }
-	}
-      else
-	{
-	  if (exp_count)
-	    {
-	      gdbm_count_t count;
-
-	      if (gdbm_count (gdbm_file, &count))
-		*exp_count = 0;
-	      else if (count > SIZE_T_MAX)
-		*exp_count = SIZE_T_MAX;
-	      else
-		*exp_count = count;
 	    }
 	}
     }
@@ -1505,15 +1350,15 @@ list_bucket_keys (struct command_environ *cenv)
 	    {
 	      dberror ("%s", "gdbm_fetch");
 	      terror ("%s", _("the key was:"));
-	      datum_format (stderr, &key, dsdef[DS_KEY]);
+	      datum_format_file (stderr, &key, dsdef[DS_KEY]);
 	      rc = GDBMSHELL_GDBM_ERR;
 	    }
 	  else
 	    {
-	      datum_format (cenv->fp, &key, dsdef[DS_KEY]);
-	      fputc (' ', cenv->fp);
-	      datum_format (cenv->fp, &content, dsdef[DS_CONTENT]);
-	      fputc ('\n', cenv->fp);
+	      datum_format (cenv->pager, &key, dsdef[DS_KEY]);
+	      pager_putc (cenv->pager, ' ');
+	      datum_format (cenv->pager, &content, dsdef[DS_CONTENT]);
+	      pager_putc (cenv->pager, '\n');
 	    }
 	  free (content.dptr);
 	}
@@ -1543,15 +1388,15 @@ list_all_keys (struct command_environ *cenv)
 	 {
 	   dberror ("%s", "gdbm_fetch");
 	   terror ("%s", _("the key was:"));
-	   datum_format (stderr, &key, dsdef[DS_KEY]);
+	   datum_format_file (stderr, &key, dsdef[DS_KEY]);
 	   rc = GDBMSHELL_GDBM_ERR;
 	 }
       else
 	 {
-	   datum_format (cenv->fp, &key, dsdef[DS_KEY]);
-	   fputc (' ', cenv->fp);
-	   datum_format (cenv->fp, &data, dsdef[DS_CONTENT]);
-	   fputc ('\n', cenv->fp);
+	   datum_format (cenv->pager, &key, dsdef[DS_KEY]);
+	   pager_putc (cenv->pager, ' ');
+	   datum_format (cenv->pager, &data, dsdef[DS_CONTENT]);
+	   pager_putc (cenv->pager, '\n');
 	   free (data.dptr);
 	 }
       nextkey = gdbm_nextkey (gdbm_file, key);
@@ -1735,19 +1580,20 @@ print_current_bucket_collisions (struct command_environ *cenv)
   struct collision *c = get_bucket_collisions (gdbm_file->bucket);
   if (c)
     {
-      FILE *fp = cenv->fp;
+      PAGERFILE *pager = cenv->pager;
       int i, j;
 
-      fprintf (fp, "******* ");
-      fprintf (fp, _("Bucket #%d, collisions: %d"), gdbm_file->bucket_dir,
-	       c->nentries);
-      fprintf (fp, " **********\n\n");
+      pager_printf (pager, "******* ");
+      pager_printf (pager, _("Bucket #%d, collisions: %d"),
+		    gdbm_file->bucket_dir,
+		    c->nentries);
+      pager_printf (pager, " **********\n\n");
 
       for (i = 0; i < c->nentries; i++)
 	{
-	  fprintf (fp, "* Hash %8x, %d:\n\n",
-		   c->entries[i].hash_value,
-		   c->entries[i].nindex);
+	  pager_printf (pager, "* Hash %8x, %d:\n\n",
+			c->entries[i].hash_value,
+			c->entries[i].nindex);
 	  for (j = 0; j < c->entries[i].nindex; j++)
 	    {
 	      datum key;
@@ -1761,10 +1607,10 @@ print_current_bucket_collisions (struct command_environ *cenv)
 		  collision_free (c);
 		  return;
 		}
-	      fprintf (fp, "Location: %d\n", elem_loc);
-	      datum_format (fp, &key, dsdef[DS_KEY]);
-	      fputc ('\n', fp);
-	      fputc ('\n', fp);
+	      pager_printf (pager, "Location: %d\n", elem_loc);
+	      datum_format (pager, &key, dsdef[DS_KEY]);
+	      pager_putc (pager, '\n');
+	      pager_putc (pager, '\n');
 	    }
 	}
       collision_free (c);
@@ -1805,58 +1651,6 @@ get_bucket_numbers (struct command_param *param, int *ret_from, int *ret_to)
 }
 
 static int
-collisions_begin (struct command_param *param,
-		  struct command_environ *cenv GDBM_ARG_UNUSED,
-		  size_t *exp_count)
-{
-  int rc = checkdb ();
-  if (rc == GDBMSHELL_OK)
-    {
-      if (exp_count)
-	{
-	  int n_from, n_to;
-	  if ((rc = get_bucket_numbers (param, &n_from, &n_to)) == GDBMSHELL_OK)
-	    {
-	      size_t max_lines = get_screen_lines ();
-	      size_t num_lines = 0;
-	      int i;
-	      struct collision *c;
-
-	      if (n_from != -1)
-		{
-		  for (i = n_from; i <= n_to; i++)
-		    {
-		      if (_gdbm_get_bucket (gdbm_file, i))
-			{
-			  dberror (_("%s(%d) failed"), "_gdbm_get_bucket", i);
-			  return GDBMSHELL_GDBM_ERR;
-			}
-		      if ((c = get_bucket_collisions (gdbm_file->bucket)) != NULL)
-			{
-			  num_lines += c->nentries * 3 + c->total * 3;
-			  collision_free (c);
-			  if (num_lines > max_lines)
-			    break;
-			}
-		    }
-		}
-	      else if (gdbm_file->bucket)
-		{
-		  if ((c = get_bucket_collisions (gdbm_file->bucket)) != NULL)
-		    {
-		      num_lines += c->nentries * 3 + c->total * 3;
-		      collision_free (c);
-		    }
-		}
-
-	      *exp_count = num_lines;
-	    }
-	}
-    }
-  return rc;
-}
-
-static int
 collisions_handler (struct command_param *param,
 		    struct command_environ *cenv)
 {
@@ -1881,7 +1675,7 @@ collisions_handler (struct command_param *param,
 	}
     }
   else if (!gdbm_file->bucket)
-    fprintf (cenv->fp, _("no current bucket\n"));
+    pager_writeln (cenv->pager, _("no current bucket"));
   else
     print_current_bucket_collisions (cenv);
   return GDBMSHELL_OK;
@@ -2021,13 +1815,13 @@ status_handler (struct command_param *param GDBM_ARG_UNUSED,
   char *file_name;
 
   variable_get ("filename", VART_STRING, (void**) &file_name);
-  fprintf (cenv->fp, _("Database file: %s\n"), file_name);
+  pager_printf (cenv->pager, _("Database file: %s\n"), file_name);
   if (gdbm_file)
-    fprintf (cenv->fp, "%s\n", _("Database is open"));
+    pager_writeln (cenv->pager, _("Database is open"));
   else
-    fprintf (cenv->fp, "%s\n", _("Database is not open"));
-  dsprint (cenv->fp, DS_KEY, dsdef[DS_KEY]);
-  dsprint (cenv->fp, DS_CONTENT, dsdef[DS_CONTENT]);
+    pager_writeln (cenv->pager, _("Database is not open"));
+  dsprint (cenv->pager, DS_KEY, dsdef[DS_KEY]);
+  dsprint (cenv->pager, DS_CONTENT, dsdef[DS_CONTENT]);
   return GDBMSHELL_OK;
 }
 
@@ -2088,14 +1882,14 @@ debug_handler (struct command_param *param, struct command_environ *cenv)
     }
   else
     {
-      fprintf (cenv->fp, _("Debug flags:"));
+      pager_writez (cenv->pager, _("Debug flags:"));
       if (gdbm_debug_flags)
 	{
-	  gdbm_debug_parse_state (debug_flag_printer, cenv->fp);
+	  gdbm_debug_parse_state (debug_flag_printer, cenv->pager);
 	}
       else
-	fprintf (cenv->fp, " %s", _("none"));
-      fputc ('\n', cenv->fp);
+	pager_printf (cenv->pager, " %s", _("none"));
+      pager_putc (cenv->pager, '\n');
     }
 #else
   terror ("%s", _("compiled without debug support"));
@@ -2191,15 +1985,16 @@ perror_handler (struct command_param *param, struct command_environ *cenv)
     {
       n = gdbm_last_errno (gdbm_file);
     }
-  fprintf (cenv->fp, "GDBM error code %d: \"%s\"\n", n, gdbm_strerror (n));
+  pager_printf (cenv->pager,
+		"GDBM error code %d: \"%s\"\n", n, gdbm_strerror (n));
   if (gdbm_check_syserr (n))
     {
       if (param->argc)
-	fprintf (cenv->fp, "Examine errno.\n");
+	pager_printf (cenv->pager, "Examine errno.\n");
       else
-	fprintf (cenv->fp, "System error code %d: \"%s\"\n",
-		 gdbm_last_syserr (gdbm_file),
-		 strerror (gdbm_last_syserr (gdbm_file)));
+	pager_printf (cenv->pager, "System error code %d: \"%s\"\n",
+		      gdbm_last_syserr (gdbm_file),
+		      strerror (gdbm_last_syserr (gdbm_file)));
     }
   return GDBMSHELL_OK;
 }
@@ -2212,8 +2007,7 @@ struct history_param
 
 static int
 input_history_begin (struct command_param *param,
-		     struct command_environ *cenv GDBM_ARG_UNUSED,
-		     size_t *exp_count)
+		     struct command_environ *cenv GDBM_ARG_UNUSED)
 {
   struct history_param *p;
   int hlen = input_history_size ();
@@ -2253,8 +2047,6 @@ input_history_begin (struct command_param *param,
   p->from = from;
   p->count = count;
   cenv->data = p;
-  if (exp_count)
-    *exp_count = count;
   return GDBMSHELL_OK;
 }
 
@@ -2264,22 +2056,19 @@ input_history_handler (struct command_param *param GDBM_ARG_UNUSED,
 {
   struct history_param *p = cenv->data;
   int i;
-  FILE *fp = cenv->fp;
 
   for (i = 0; i < p->count; i++)
     {
       const char *s = input_history_get (p->from + i);
       if (!s)
 	break;
-      fprintf (fp, "%4d) %s\n", p->from + i + 1, s);
+      pager_printf (cenv->pager, "%4d) %s\n", p->from + i + 1, s);
     }
   return GDBMSHELL_OK;
 }
 
 
 static int help_handler (struct command_param *, struct command_environ *);
-static int help_begin (struct command_param *, struct command_environ *,
-		       size_t *);
 
 struct argdef
 {
@@ -2302,7 +2091,7 @@ struct command
   char *name;           /* Command name */
   size_t len;           /* Name length */
   int tok;
-  int (*begin) (struct command_param *param, struct command_environ *cenv, size_t *);
+  int (*begin) (struct command_param *param, struct command_environ *cenv);
   int (*handler) (struct command_param *param, struct command_environ *cenv);
   void (*end) (void *data);
   struct argdef args[NARGS];
@@ -2458,7 +2247,7 @@ static struct command command_tab[] = {
     .name = "avail",
     .doc = N_("print avail list"),
     .tok = T_CMD,
-    .begin = avail_begin,
+    .begin = checkdb_begin,
     .handler = avail_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2480,7 +2269,7 @@ static struct command command_tab[] = {
     .name = "current",
     .doc = N_("print current bucket"),
     .tok = T_CMD,
-    .begin = print_current_bucket_begin,
+    .begin = checkdb_begin,
     .handler = print_current_bucket_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2498,7 +2287,7 @@ static struct command command_tab[] = {
     .name = "dir",
     .doc = N_("print hash directory"),
     .tok = T_CMD,
-    .begin = print_dir_begin,
+    .begin = checkdb_begin,
     .handler = print_dir_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2507,7 +2296,7 @@ static struct command command_tab[] = {
     .name = "header",
     .doc = N_("print database file header"),
     .tok = T_CMD,
-    .begin = print_header_begin,
+    .begin = checkdb_begin,
     .handler = print_header_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2528,7 +2317,7 @@ static struct command command_tab[] = {
     .name = "cache",
     .doc = N_("print the bucket cache"),
     .tok = T_CMD,
-    .begin = print_cache_begin,
+    .begin = checkdb_begin,
     .handler = print_cache_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2593,7 +2382,6 @@ static struct command command_tab[] = {
     .name = "help",
     .doc = N_("print this help list"),
     .tok = T_CMD,
-    .begin = help_begin,
     .handler = help_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2734,7 +2522,7 @@ static struct command command_tab[] = {
     },
     .doc = N_("find colliding entries in buckets"),
     .tok = T_CMD,
-    .begin = collisions_begin,
+    .begin = checkdb_begin,
     .handler = collisions_handler,
     .variadic = FALSE,
     .repeat = REPEAT_NEVER,
@@ -2787,17 +2575,19 @@ command_generator (const char *text, int state)
 }
 
 /* ? - help handler */
-#define CMDCOLS 30
-
-static int
-help_begin (struct command_param *param GDBM_ARG_UNUSED,
-	    struct command_environ *cenv GDBM_ARG_UNUSED,
-	    size_t *exp_count)
+static ssize_t
+pwriter (void *data, char const *buf, size_t len)
 {
-  if (exp_count)
-    *exp_count = ARRAY_SIZE (command_tab) + 1;
-  return 0;
+  return pager_write ((PAGERFILE*)data, buf, len);
 }
+
+WORDWRAP_FILE
+wordwrap_pager_open (PAGERFILE *pager)
+{
+  return wordwrap_open (pager_fileno (pager), pwriter, pager);
+}
+
+#define CMDCOLS 30
 
 static int
 help_handler (struct command_param *param GDBM_ARG_UNUSED,
@@ -2806,8 +2596,8 @@ help_handler (struct command_param *param GDBM_ARG_UNUSED,
   struct command *cmd;
   WORDWRAP_FILE wf;
 
-  fflush (cenv->fp);
-  wf = wordwrap_fdopen (fileno (cenv->fp));
+  pager_flush (cenv->pager);
+  wf = wordwrap_pager_open (cenv->pager);
 
   for (cmd = command_tab; cmd->name; cmd++)
     {
@@ -3246,7 +3036,7 @@ format_arg (struct gdbmarg *arg, struct argdef *def, FILE *fp)
       if (def && def->type == GDBM_ARG_DATUM)
 	{
 	  fputc (' ', fp);
-	  datum_format (fp, &arg->v.dat, dsdef[def->ds]);
+	  datum_format_file (fp, &arg->v.dat, dsdef[def->ds]);
 	}
       else
 	/* Shouldn't happen */
@@ -3418,8 +3208,6 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
 {
   int i;
   char *pager = NULL;
-  size_t expected_lines, *expected_lines_ptr;
-  FILE *pagfp = NULL;
   struct command_param param = HANDLER_PARAM_INITIALIZER;
   struct command_environ cenv = COMMAND_ENVIRON_INITIALIZER;
   int rc = 0;
@@ -3429,10 +3217,12 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
     rc = GDBMSHELL_ERR;
   else
     {
-      variable_get ("pager", VART_STRING, (void**) &pager);
+      if (interactive ())
+	variable_get ("pager", VART_STRING, (void**) &pager);
+      else
+	pager = NULL;
 
       /* Prepare for calling the handler */
-      pagfp = NULL;
 
       if (variable_is_true ("trace"))
 	{
@@ -3451,27 +3241,10 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
 	  fputc ('\n', stderr);
 	}
 
-      expected_lines = 0;
-      expected_lines_ptr = (interactive () && pager) ? &expected_lines : NULL;
       rc = 0;
-      if (!(cmd->begin &&
-	    (rc = cmd->begin (&param, &cenv, expected_lines_ptr)) != 0))
+      if (!(cmd->begin && (rc = cmd->begin (&param, &cenv)) != 0))
 	{
-	  if (pager && expected_lines > get_screen_lines ())
-	    {
-	      pagfp = popen (pager, "w");
-	      if (pagfp)
-		cenv.fp = pagfp;
-	      else
-		{
-		  terror (_("cannot run pager `%s': %s"), pager,
-			  strerror (errno));
-		  pager = NULL;
-		  cenv.fp = stdout;
-		}
-	    }
-	  else
-	    cenv.fp = stdout;
+	  cenv.pager = pager_open (stdout, get_screen_lines (), pager);
 
 	  timing_start (&tm);
 	  rc = cmd->handler (&param, &cenv);
@@ -3483,15 +3256,15 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
 
 	  if (variable_is_true ("timing"))
 	    {
-	      fprintf (cenv.fp, "[%s r=%lu.%06lu u=%lu.%06lu s=%lu.%06lu]\n",
-		       cmd->name,
-		       tm.real.tv_sec, tm.real.tv_usec,
-		       tm.user.tv_sec, tm.user.tv_usec,
-		       tm.sys.tv_sec, tm.sys.tv_usec);
+	      pager_printf (cenv.pager,
+			    "[%s r=%lu.%06lu u=%lu.%06lu s=%lu.%06lu]\n",
+			    cmd->name,
+			    tm.real.tv_sec, tm.real.tv_usec,
+			    tm.user.tv_sec, tm.user.tv_usec,
+			    tm.sys.tv_sec, tm.sys.tv_usec);
 	    }
 
-	  if (pagfp)
-	    pclose (pagfp);
+	  pager_close (cenv.pager);
 	}
     }
 

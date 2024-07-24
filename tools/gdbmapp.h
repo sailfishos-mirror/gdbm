@@ -70,6 +70,9 @@ extern char *parseopt_program_args;
 typedef struct wordwrap_file *WORDWRAP_FILE;
 
 WORDWRAP_FILE wordwrap_fdopen (int fd);
+WORDWRAP_FILE wordwrap_open (int fd,
+			     ssize_t (*writer) (void *, const char *, size_t),
+			     void *data);
 int wordwrap_close (WORDWRAP_FILE wf);
 int wordwrap_flush (WORDWRAP_FILE wf);
 int wordwrap_error (WORDWRAP_FILE wf);

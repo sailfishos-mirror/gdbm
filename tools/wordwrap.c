@@ -33,11 +33,13 @@
 struct wordwrap_file
 {
   int fd;                /* Output file descriptor. */
+  ssize_t (*writer) (void *, char const *, size_t);
+  void *stream;
   unsigned left_margin;  /* Left margin. */
   unsigned right_margin; /* Right margin. */
   char *buffer;          /* Output buffer. */
   size_t bufsize;        /* Size of buffer in bytes. */
-  unsigned offset;       /* Offset of the writing point in the buffer */ 
+  unsigned offset;       /* Offset of the writing point in the buffer */
   unsigned column;       /* Number of screen column, i.e. the (multibyte)
 			    character corresponding to the offset. */
   unsigned last_ws;      /* Offset of the beginning of the last whitespace
@@ -74,7 +76,7 @@ detect_right_margin (WORDWRAP_FILE wf)
 {
   struct winsize ws;
   unsigned r = 0;
-  
+
   ws.ws_col = ws.ws_row = 0;
   if ((ioctl (wf->fd, TIOCGWINSZ, (char *) &ws) < 0) || ws.ws_col == 0)
     {
@@ -96,17 +98,25 @@ detect_right_margin (WORDWRAP_FILE wf)
   return r;
 }
 
+static ssize_t
+_ww_fd_writer (void *data, const char *str, size_t n)
+{
+  WORDWRAP_FILE wf = data;
+  return write (wf->fd, str, n);
+}
+
 /*
  * Create a wordwrap file operating on file descriptor FD.
  * In the contrast to the libc fdopen, the descriptor is dup'ed.
  * Left margin is set to 0, right margin is auto detected.
  */
 WORDWRAP_FILE
-wordwrap_fdopen (int fd)
+wordwrap_open (int fd, ssize_t (*writer) (void *, const char *, size_t),
+	       void *data)
 {
   struct wordwrap_file *wf;
   int ec;
-  
+
   if ((wf = calloc (1, sizeof (*wf))) == NULL)
     return NULL;
   if ((wf->fd = dup (fd)) == -1)
@@ -116,16 +126,25 @@ wordwrap_fdopen (int fd)
       errno = ec;
       return NULL;
     }
+  wf->writer = writer;
+  wf->stream = data;
 
   wf->last_ws = UNSET;
   wf->word_start = UNSET;
   wf->next_left_margin = UNSET;
-  
+
   wordwrap_set_right_margin (wf, 0);
 
   return wf;
 }
 
+WORDWRAP_FILE
+wordwrap_fdopen (int fd)
+{
+  WORDWRAP_FILE wf = wordwrap_open (fd, _ww_fd_writer, NULL);
+  wf->stream = wf;
+  return wf;
+}
 /*
  * Close the descriptor associated with the wordwrap file, and deallocate
  * the memory.
@@ -170,10 +189,10 @@ static ssize_t
 full_write (WORDWRAP_FILE wf, size_t size)
 {
   ssize_t total = 0;
-    
+
   while (total < size)
     {
-      ssize_t n = write (wf->fd, wf->buffer + total, size - total);
+      ssize_t n = wf->writer (wf->stream, wf->buffer + total, size - total);
       if (n == -1)
 	{
 	  wf->err = errno;
@@ -222,7 +241,7 @@ wsprefix (WORDWRAP_FILE wf, char const *str, size_t size)
   for (i = 0; i < size; )
     {
       size_t n = safe_mbrtowc (wf, &wc, &str[i], &mbs);
-      
+
       if (!iswblank (wc))
 	break;
 
@@ -241,7 +260,7 @@ wordwrap_rescan (WORDWRAP_FILE wf, size_t n)
 {
   mbstate_t mbs;
   wchar_t wc;
-  
+
   wordwrap_line_init (wf);
 
   memset (&mbs, 0, sizeof (mbs));
@@ -274,13 +293,12 @@ flush_line (WORDWRAP_FILE wf, size_t size)
 {
   ssize_t n;
   size_t len;
-  char c;
 
   if (ISSET (wf->last_ws) && size == wf->last_ws + wf->ws_run)
     len = wf->last_ws;
   else
     len = size;
-  
+
   if (len >= wf->left_margin && wf->offset > wf->left_margin)
     {
       n = full_write (wf, len);
@@ -293,10 +311,9 @@ flush_line (WORDWRAP_FILE wf, size_t size)
 	  abort ();
 	}
     }
-  
-  c = '\n';
-  write (wf->fd, &c, 1);
-  
+
+  wf->writer (wf->stream, "\n", 1);
+
   if (ISSET (wf->next_left_margin))
     {
       wf->left_margin = wf->next_left_margin;
@@ -307,9 +324,9 @@ flush_line (WORDWRAP_FILE wf, size_t size)
   if (n > 0)
     {
       size_t wsn;
-      
+
       wsn = wsprefix (wf, wf->buffer + size, n);
-      
+
       size += wsn;
       n -= wsn;
 
@@ -323,7 +340,7 @@ flush_line (WORDWRAP_FILE wf, size_t size)
       wf->indent = 0;
     }
   wordwrap_rescan (wf, wf->left_margin + n);
-  
+
   return 0;
 }
 
@@ -354,7 +371,7 @@ int
 wordwrap_set_left_margin (WORDWRAP_FILE wf, unsigned left)
 {
   int bol;
-  
+
   if (left == wf->left_margin)
     return 0;
   else if (left >= wf->right_margin)
@@ -369,7 +386,7 @@ wordwrap_set_left_margin (WORDWRAP_FILE wf, unsigned left)
   if (left < wf->offset)
     {
       if (!bol)
-      	flush_line (wf, wf->offset);//FIXME: remove trailing ws
+	flush_line (wf, wf->offset);//FIXME: remove trailing ws
     }
   else
     {
@@ -420,7 +437,7 @@ wordwrap_set_right_margin (WORDWRAP_FILE wf, unsigned right)
     {
       char *p;
       size_t size;
-      
+
       if (right < wf->offset)
 	{
 	  if (wordwrap_flush (wf))
@@ -480,7 +497,7 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
   for (i = 0; i < len; )
     {
       size_t n = safe_mbrtowc (wf, &wc, &str[i], &mbs);
-      
+
       if (wf->column + 1 == wf->right_margin || wc == '\n')
 	{
 	  size_t len;
@@ -494,7 +511,7 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
 	    len = wf->last_ws;
 	  else
 	    len = wf->offset;
-	  
+
 	  flush_line (wf, len);
 	  if (wc == '\n')
 	    {
@@ -521,7 +538,7 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
 	}
 
       memcpy (wf->buffer + wf->offset, str + i, n);
-      
+
       wf->offset += n;
       wf->column++;
 
@@ -569,7 +586,7 @@ wordwrap_vprintf (WORDWRAP_FILE wf, char const *fmt, va_list ap)
   char *buf;
   ssize_t n;
   int rc;
-  
+
   buf = malloc (buflen);
   if (!buf)
     {
@@ -588,14 +605,14 @@ wordwrap_vprintf (WORDWRAP_FILE wf, char const *fmt, va_list ap)
       if (n < 0 || n >= buflen || !memchr(buf, '\0', n + 1))
 	{
 	  char *p;
-	  
+
 	  if ((size_t) -1 / 3 * 2  <= buflen)
 	    {
 	      wf->err = ENOMEM;
 	      free (buf);
 	      return -1;
 	    }
-	  
+
 	  buflen += (buflen + 1) / 2;
 	  p = realloc (buf, buflen);
 	  if (!p)
@@ -624,12 +641,9 @@ wordwrap_printf (WORDWRAP_FILE wf, char const *fmt, ...)
 {
   va_list ap;
   int rc;
-  
+
   va_start (ap, fmt);
   rc = wordwrap_vprintf (wf, fmt, ap);
   va_end (ap);
   return rc;
 }
-
-
-

@@ -27,6 +27,7 @@ libgdbmapp_a_SOURCES =\
  err.c\
  mem.c\
  gdbmapp.h\
+ pagerfile.c\
  parseopt.c\
  progname.c\
  datconv.c\
