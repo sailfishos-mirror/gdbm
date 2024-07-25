@@ -279,14 +279,15 @@ void pager_close (struct pagerfile *pfp);
 ssize_t pager_write (struct pagerfile *pfp, const char *buffer, size_t size);
 ssize_t pager_writez (struct pagerfile *pfp, const char *str);
 ssize_t pager_writeln (struct pagerfile *pfp, const char *str);
-void pager_putc (struct pagerfile *pfp, int c);
-ssize_t pager_vprintf (struct pagerfile *pfp, const char *fmt, va_list ap);
-ssize_t pager_printf (struct pagerfile *pfp, const char *fmt, ...);
-void pager_flush (struct pagerfile *pfp);
+int pager_putc (struct pagerfile *pfp, int c);
+int pager_vprintf (struct pagerfile *pfp, const char *fmt, va_list ap);
+int pager_printf (struct pagerfile *pfp, const char *fmt, ...);
+int pager_flush (struct pagerfile *pfp);
 static inline int pager_fileno (struct pagerfile *pfp)
 {
   return fileno (pfp->stream);
 }
+int pager_error (struct pagerfile *pfp);
 
 struct command_environ
 {

@@ -1574,9 +1574,10 @@ get_bucket_collisions (hash_bucket *bucket)
   return c;
 }
 
-static void
-print_current_bucket_collisions (struct command_environ *cenv)
+static int
+print_current_bucket_collisions_internal (struct command_environ *cenv)
 {
+  int rc = 0;
   struct collision *c = get_bucket_collisions (gdbm_file->bucket);
   if (c)
     {
@@ -1605,16 +1606,30 @@ print_current_bucket_collisions (struct command_environ *cenv)
 		{
 		  dberror ("%s", _("error reading entry"));
 		  collision_free (c);
-		  return;
+		  return -1;
 		}
 	      pager_printf (pager, "Location: %d\n", elem_loc);
 	      datum_format (pager, &key, dsdef[DS_KEY]);
 	      pager_putc (pager, '\n');
 	      pager_putc (pager, '\n');
+	      if (pager_error (pager))
+		{
+		  if (errno != EPIPE)
+		    dberror ("output error: %s", strerror (errno));
+		  rc = -1;
+		  break;
+		}
 	    }
 	}
       collision_free (c);
     }
+  return rc;
+}
+
+static void
+print_current_bucket_collisions (struct command_environ *cenv)
+{
+  print_current_bucket_collisions_internal (cenv);
 }
 
 static int
@@ -1671,7 +1686,8 @@ collisions_handler (struct command_param *param,
 	      dberror (_("%s(%d) failed"), "_gdbm_get_bucket", i);
 	      return GDBMSHELL_GDBM_ERR;
 	    }
-	  print_current_bucket_collisions (cenv);
+	  if (print_current_bucket_collisions_internal (cenv))
+	    break;
 	}
     }
   else if (!gdbm_file->bucket)

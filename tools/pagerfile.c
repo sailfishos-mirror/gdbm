@@ -19,18 +19,21 @@
 #include <stdarg.h>
 #include "gdbmtool.h"
 
-void
+int
 pager_flush (struct pagerfile *pfp)
 {
   if (pfp->bufsize > 0)
     {
-      fwrite (pfp->bufbase, 1, pfp->bufsize, pfp->stream);
+      if (fwrite (pfp->bufbase, pfp->bufsize, 1, pfp->stream) != 1)
+	return -1;
       pfp->bufsize = 0;
     }
-  fflush (pfp->stream);
+  if (fflush (pfp->stream))
+    return -1;
+  return 0;
 }
 
-static void
+static int
 pager_checklines (struct pagerfile *pfp)
 {
   if (pfp->nlines > pfp->maxlines)
@@ -46,8 +49,9 @@ pager_checklines (struct pagerfile *pfp)
 	  pfp->mode = mode_pager;
 	  pfp->stream = pagfp;
 	}
-      pager_flush (pfp);
+      return pager_flush (pfp);
     }
+  return 0;
 }
 
 static ssize_t
@@ -74,7 +78,8 @@ pager_write (struct pagerfile *pfp, const char *buffer, size_t size)
   pfp->bufsize += size;
   pfp->nlines += memccount (buffer, '\n', size);
 
-  pager_checklines (pfp);
+  if (pager_checklines (pfp))
+    return -1;
   
   return size;
 }
@@ -85,12 +90,12 @@ pager_writez (struct pagerfile *pfp, const char *str)
   return pager_write (pfp, str, strlen (str));
 }
 
-void
+int
 pager_putc (struct pagerfile *pfp, int c)
 {
   char buf[1];
   buf[0] = c;
-  pager_write (pfp, buf, 1);
+  return pager_write (pfp, buf, 1);
 }
 
 ssize_t
@@ -105,7 +110,7 @@ pager_writeln (struct pagerfile *pfp, const char *str)
   return ret;
 }
 
-ssize_t
+int
 pager_vprintf (struct pagerfile *pfp, const char *fmt, va_list ap)
 {
   ssize_t ret;
@@ -144,18 +149,18 @@ pager_vprintf (struct pagerfile *pfp, const char *fmt, va_list ap)
     }
 
   if (pfp->mode == mode_initial)
-    pager_checklines (pfp);
+    ret = pager_checklines (pfp);
   else
-    pager_flush (pfp);
+    ret = pager_flush (pfp);
 
   return ret;
 }
 
-ssize_t
+int
 pager_printf (struct pagerfile *pfp, const char *fmt, ...)
 {
   va_list ap;
-  ssize_t ret;
+  int ret;
   
   va_start (ap, fmt);
   ret = pager_vprintf (pfp, fmt, ap);
@@ -173,6 +178,12 @@ pager_close (struct pagerfile *pfp)
   free (pfp->bufbase);
   free (pfp->pager);
   free (pfp);
+}
+
+int
+pager_error (struct pagerfile *pfp)
+{
+  return ferror (pfp->stream);
 }
 
 PAGERFILE *
