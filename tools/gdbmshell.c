@@ -1128,6 +1128,7 @@ print_snapshot (char const *snapname, PAGERFILE *fp)
 	      else
 		/* TRANSLATORS: Stands for "Not Available". */
 		pager_printf (fp, " %s", _("N/A"));
+	      gdbm_close (dbf);
 	    }
 	  else if (gdbm_check_syserr (gdbm_errno))
 	    {
@@ -1425,11 +1426,12 @@ list_handler (struct command_param *param GDBM_ARG_UNUSED,
 struct collision_entry
 {
   int hash_value;         /* Hash value. */
-  int nindex;             /* Number of element indices in index[] array.
-			     When gathering collision statistics, this
-			     field keeps index of the bucket element with
+  int home_loc;           /* Home location for this collision.  When
+			     building collision statistics, this field
+			     keeps index of the bucket element with
 			     that hash value.  In this case, index is
 			     NULL. */
+  int nindex;             /* Number of element indices in index[] array. */
   int *index;             /* Indices of colliding elements.  It points to
 			     the index array of the collision structure that
 			     holds this entry. */
@@ -1476,7 +1478,7 @@ collision_add (struct collision *col, int i, int hash_value)
   assert (col->nentries < col->maxentries);
   ent = &col->entries[col->nentries];
   ent->index = NULL;
-  ent->nindex = i;
+  ent->home_loc = i;
   ent->hash_value = hash_value;
   col->nentries++;
 }
@@ -1549,13 +1551,23 @@ get_bucket_collisions (hash_bucket *bucket)
 	}
       else
 	{
-	  int k;
+	  int k, l;
+	  int home_loc = c->entries[i].hash_value %
+	                     gdbm_file->header->bucket_elems;
 
+	  /* Find the home location entry */
+	  for (k = 0; k < j; k++)
+	    if (c->entries[i+k].home_loc == home_loc)
+	      break;
+
+	  if (k == j)
+	    /* Just in case */
+	    k = 0;
+	  
 	  /* Gather colliding indices. */
 	  c->entries[i].index = &c->index[n];
-	  c->entries[i].index[0] = c->entries[i].nindex;
-	  for (k = 1; k < j; k++)
-	    c->entries[i].index[k] = c->entries[i+k].nindex;
+	  for (l = 0; l < j; l++, k = (k + 1) % j)
+	    c->entries[i].index[l] = c->entries[i+k].home_loc;
 	  c->entries[i].nindex = j;
 	  n += j;
 

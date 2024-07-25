@@ -299,6 +299,7 @@ gdbm_fd_open (int fd, const char *file_name, int block_size,
   dbf->file_locking = TRUE;	/* Default to doing file locking. */
   dbf->central_free = FALSE;	/* Default to not using central_free. */
   dbf->coalesce_blocks = FALSE; /* Default to not coalesce blocks. */
+  dbf->reorder_collisions = TRUE;
 
   dbf->need_recovery = FALSE;
   dbf->last_error = GDBM_NO_ERROR;

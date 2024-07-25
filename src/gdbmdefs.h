@@ -251,6 +251,9 @@ struct gdbm_file_info
 
   /* Automatic bucket cache size */
   unsigned cache_auto :1;
+
+  /* During fetch, move found entry to the head of the collision sequence. */
+  unsigned reorder_collisions :1;
   
   /* Last GDBM error number */
   gdbm_error last_error;

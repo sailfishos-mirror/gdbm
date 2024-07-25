@@ -25,7 +25,7 @@ static int
 getbool (void *optval, int optlen)
 {
   int n;
-  
+
   if (!optval || optlen != sizeof (int) ||
       (((n = *(int*)optval) != TRUE) && n != FALSE))
     return -1;
@@ -55,10 +55,10 @@ setopt_gdbm_setcachesize (GDBM_FILE dbf, void *optval, int optlen)
 
   /* Optval will point to the new size of the cache. */
   if (get_size (optval, optlen, &sz))
-    {     
+    {
       GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
       return -1;
-    }  
+    }
   return _gdbm_cache_init (dbf, sz);
 }
 
@@ -80,7 +80,7 @@ setopt_gdbm_setcacheauto (GDBM_FILE dbf, void *optval, int optlen)
   int n;
 
   if ((n = getbool (optval, optlen)) == -1)
-    {     
+    {
       GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
       return -1;
     }
@@ -122,7 +122,7 @@ setopt_gdbm_setsyncmode (GDBM_FILE dbf, void *optval, int optlen)
 
   /* Optval will point to either true or false. */
   if ((n = getbool (optval, optlen)) == -1)
-    { 
+    {
       GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
       return -1;
     }
@@ -147,7 +147,7 @@ static int
 setopt_gdbm_setcentfree (GDBM_FILE dbf, void *optval, int optlen)
 {
   int n;
-  
+
   /* Optval will point to either true or false. */
   if ((n = getbool (optval, optlen)) == -1)
     {
@@ -175,7 +175,7 @@ static int
 setopt_gdbm_setcoalesceblks (GDBM_FILE dbf, void *optval, int optlen)
 {
   int n;
-  
+
   /* Optval will point to either true or false. */
   if ((n = getbool (optval, optlen)) == -1)
     {
@@ -198,12 +198,12 @@ setopt_gdbm_getcoalesceblks (GDBM_FILE dbf, void *optval, int optlen)
   return 0;
 }
 
-#if HAVE_MMAP  
+#if HAVE_MMAP
 static int
 setopt_gdbm_setmmap (GDBM_FILE dbf, void *optval, int optlen)
 {
   int n;
-  
+
   if ((n = getbool (optval, optlen)) == -1)
     {
       GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
@@ -247,7 +247,7 @@ setopt_gdbm_setmaxmapsize (GDBM_FILE dbf, void *optval, int optlen)
   size_t sz;
 
   if (get_size (optval, optlen, &sz))
-    { 
+    {
       GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
       return -1;
     }
@@ -283,7 +283,7 @@ setopt_gdbm_getflags (GDBM_FILE dbf, void *optval, int optlen)
 
       if (!dbf->fast_write)
 	flags |= GDBM_SYNC;
-      
+
       if (!dbf->file_locking)
 	flags |= GDBM_NOLOCK;
 
@@ -294,10 +294,10 @@ setopt_gdbm_getflags (GDBM_FILE dbf, void *optval, int optlen)
 
       if (dbf->cloexec)
 	flags |= GDBM_CLOEXEC;
-      
+
       if (dbf->header->header_magic == GDBM_NUMSYNC_MAGIC)
 	flags |= GDBM_NUMSYNC;
-      
+
       *(int*) optval = flags;
     }
   return 0;
@@ -332,7 +332,7 @@ setopt_gdbm_getblocksize (GDBM_FILE dbf, void *optval, int optlen)
       *(int*) optval = dbf->header->block_size;
       return 0;
     }
-  
+
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
 }
@@ -348,13 +348,13 @@ setopt_gdbm_getdbformat (GDBM_FILE dbf, void *optval, int optlen)
 	case GDBM_MAGIC:
 	  *(int*)optval = 0;
 	  break;
-      
+
 	case GDBM_NUMSYNC_MAGIC:
 	  *(int*)optval = GDBM_NUMSYNC;
 	}
       return 0;
     }
-  
+
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
 }
@@ -367,7 +367,7 @@ setopt_gdbm_getdirdepth (GDBM_FILE dbf, void *optval, int optlen)
       *(int*) optval = dbf->header->dir_bits;
       return 0;
     }
-  
+
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
 }
@@ -380,9 +380,36 @@ setopt_gdbm_getbucketsize (GDBM_FILE dbf, void *optval, int optlen)
       *(int*) optval = dbf->header->bucket_elems;
       return 0;
     }
-  
+
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
+}
+
+static int
+setopt_gdbm_setcrosl (GDBM_FILE dbf, void *optval, int optlen)
+{
+  int n;
+
+  /* Optval will point to either true or false. */
+  if ((n = getbool (optval, optlen)) == -1)
+    {
+      GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+      return -1;
+    }
+  dbf->reorder_collisions = n;
+  return 0;
+}
+
+static int
+setopt_gdbm_getcrosl (GDBM_FILE dbf, void *optval, int optlen)
+{
+  if (!optval || optlen != sizeof (int))
+    {
+      GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
+      return -1;
+    }
+  *(int*) optval = dbf->reorder_collisions == TRUE;
+  return 0;
 }
 
 typedef int (*setopt_handler) (GDBM_FILE, void *, int);
@@ -397,7 +424,7 @@ static setopt_handler setopt_handler_tab[] = {
   [GDBM_GETCENTFREE]  = setopt_gdbm_getcentfree,
   [GDBM_SETCOALESCEBLKS] = setopt_gdbm_setcoalesceblks,
   [GDBM_GETCOALESCEBLKS] = setopt_gdbm_getcoalesceblks,
-#if HAVE_MMAP  
+#if HAVE_MMAP
   [GDBM_SETMMAP]         = setopt_gdbm_setmmap,
   [GDBM_GETMMAP]         = setopt_gdbm_getmmap,
   [GDBM_SETMAXMAPSIZE]   = setopt_gdbm_setmaxmapsize,
@@ -411,19 +438,21 @@ static setopt_handler setopt_handler_tab[] = {
   [GDBM_GETBUCKETSIZE]   = setopt_gdbm_getbucketsize,
   [GDBM_GETCACHEAUTO]    = setopt_gdbm_getcacheauto,
   [GDBM_SETCACHEAUTO]    = setopt_gdbm_setcacheauto,
+  [GDBM_GETCROSL]        = setopt_gdbm_getcrosl,
+  [GDBM_SETCROSL]        = setopt_gdbm_setcrosl,
 };
-  
+
 int
 gdbm_setopt (GDBM_FILE dbf, int optflag, void *optval, int optlen)
 {
-  /* Return immediately if the database needs recovery */	
+  /* Return immediately if the database needs recovery */
   GDBM_ASSERT_CONSISTENCY (dbf, -1);
 
   if (optflag >= 0
       && optflag < ARRAY_SIZE (setopt_handler_tab)
       && setopt_handler_tab[optflag])
     return setopt_handler_tab[optflag] (dbf, optval, optlen);
-  
+
   GDBM_SET_ERRNO (dbf, GDBM_OPT_BADVAL, FALSE);
   return -1;
 }

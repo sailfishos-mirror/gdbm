@@ -56,6 +56,7 @@ static int errormask_sethook (struct variable *var, union value *v);
 static int errormask_typeconv (struct variable *var, int type, void **retptr);
 static void errormask_freehook (void *);
 static int errorexit_sethook (struct variable *var, union value *v);
+static int crosl_sethook (struct variable *var, union value *v);
 
 static struct variable vartab[] = {
   /* Top-level prompt */
@@ -199,6 +200,13 @@ static struct variable vartab[] = {
   {
     .name = "trace",
     .type = VART_BOOL
+  },
+  {
+    .name = "crosl",
+    .type = VART_BOOL,
+    .flags = VARF_INIT,
+    .init = { .bool = 1 },
+    .sethook = crosl_sethook
   },
   { NULL }
 };
@@ -660,6 +668,15 @@ coalesce_sethook (struct variable *var, union value *v)
   if (!v)
     return VAR_OK;
   return gdbmshell_setopt ("GDBM_SETCOALESCEBLKS", GDBM_SETCOALESCEBLKS, v->bool) == 0
+	 ? VAR_OK : VAR_ERR_GDBM;
+}
+
+static int
+crosl_sethook (struct variable *var, union value *v)
+{
+  if (!v)
+    return VAR_OK;
+  return gdbmshell_setopt ("GDBM_SETCROSL", GDBM_SETCROSL, v->bool) == 0
 	 ? VAR_OK : VAR_ERR_GDBM;
 }
 
