@@ -147,7 +147,6 @@ _gdbm_finish_transfer (GDBM_FILE dbf, GDBM_FILE new_dbf,
   free (dbf->header);
   free (dbf->dir);
 
-  _gdbm_cache_flush (dbf);
   _gdbm_cache_free (dbf);
 
   dbf->lock_type         = new_dbf->lock_type;
@@ -265,7 +264,6 @@ run_recovery (GDBM_FILE dbf, GDBM_FILE new_dbf, gdbm_recovery *rcvr, int flags)
   for (bucket_dir = 0; bucket_dir < nbuckets;
        bucket_dir = _gdbm_next_bucket_dir (dbf, bucket_dir))
     {
-      
       if (_gdbm_get_bucket (dbf, bucket_dir))
 	{
 	  if (flags & GDBM_RCVR_ERRFUN)
