@@ -1128,6 +1128,7 @@ print_snapshot (char const *snapname, PAGERFILE *fp)
 	      else
 		/* TRANSLATORS: Stands for "Not Available". */
 		pager_printf (fp, " %s", _("N/A"));
+	      gdbm_close (dbf);
 	    }
 	  else if (gdbm_check_syserr (gdbm_errno))
 	    {
