@@ -142,6 +142,6 @@ dtdump_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
 dtfetch_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
 dtdel_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
 d_creat_ce_LDADD = ../src/libgdbm.la ../compat/libgdbm_compat.la
-t_wordwrap_LDADD = ../tools/libgdbmapp.a
+t_wordwrap_LDADD = ../tools/libgdbmapp.a @LTLIBINTL@
 
 SUBDIRS = gdbmtool
