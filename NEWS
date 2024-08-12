@@ -1,10 +1,25 @@
-GNU dbm NEWS -- history of user-visible changes. 2024-07-24
+GNU dbm NEWS -- history of user-visible changes. 2024-08-12
 Copyright (C) 1990-2024 Free Software Foundation, Inc.
 See the end of file for copying conditions.
 
 Please send gdbm bug reports to <bug-gdbm@gnu.org>.
 
 Version 1.24.90 (git)
+
+* New gdbmtool command: collisions
+
+The command prints the collision chains for the current bucket, or
+for the buckets identified by its arguments:
+
+  collisions
+     Display collisions for the current bucket.
+
+  collisions N
+     Display collisions for bucket N.
+
+  collisions N0 N1
+     Display collisions for the range of buckets [N0, N1].
+
 
 Version 1.24, 2024-07-02
 

@@ -3568,6 +3568,20 @@ Print the bucket cache.
 Close the currently open database.
 @end deffn
 
+@deffn {command verb} collisions [@var{bs} [@var{be}]]
+Displays collision table for all buckets between @var{bs} and
+@var{be}, inclusive.  If only one bucket number is given, displays
+collisions for that bucket.  If no arguments given, displays
+collisions for the current bucket.
+
+@dfn{Collisions} are bucket keys that produce the same hash value.
+Such keys form a @dfn{collision chain}.  For each chain, the
+@code{collisions} command displays the hash value and number of
+elements in chain.  This info is followed by a list of colliding
+entries.  For each entry, its location and key value are displayed.
+The key value is formatted as described in @ref{definitions}.
+@end deffn
+
 @deffn {command verb} count
 Print the number of entries in the database.
 @end deffn
