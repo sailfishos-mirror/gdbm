@@ -204,3 +204,20 @@ pager_open (FILE *stream, size_t maxlines, char const *pager)
     pfp->mode = mode_transparent;
   return pfp;
 }
+
+PAGERFILE *
+pager_create (char const *pager)
+{
+  struct pagerfile *pfp;
+  FILE *pagfp = popen (pager, "w");
+  if (!pagfp)
+    {
+      terror (_("cannot run command `%s': %s"), pager, strerror (errno));
+      return NULL;
+    }
+  pfp = ecalloc (1, sizeof (*pfp));
+  pfp->pager = estrdup (pager);
+  pfp->mode = mode_pager;
+  pfp->stream = pagfp;
+  return pfp;
+}

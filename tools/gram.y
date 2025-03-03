@@ -36,7 +36,7 @@ struct dsegm *dsdef[DS_MAX];
 %token <cmd> T_CMD "command verb"
 %token <cmd> T_SHELL "shell"
 %token <num> T_NUM "number"
-%token <string> T_IDENT "identifier" T_WORD "word"
+%token <string> T_IDENT "identifier" T_WORD "word" T_PIPELINE "pipeline"
 %type <cmd> command
 %type <string> string
 %type <arg> arg
@@ -47,6 +47,7 @@ struct dsegm *dsdef[DS_MAX];
 %type <kvpair> kvpair compound value
 %type <kvlist> kvlist
 %type <slist> slist
+%type <string> pipeline
 
 %union {
   char *string;
@@ -88,9 +89,9 @@ stmt      : /* empty */ eol
 		  YYABORT;
 		}
 	    }
-	  | command arglist eol
+	  | command arglist pipeline eol
 	    {
-	      if (run_command ($1, &$2))
+	      if (run_command ($1, &$2, $3))
 		{
 		  YYABORT;
 		}
@@ -121,6 +122,13 @@ stmt      : /* empty */ eol
 
 command   : T_CMD
 	  | T_SHELL
+	  ;
+
+pipeline  : /* empty */
+            {
+	      $$ = NULL;
+	    }
+          | T_PIPELINE
 	  ;
 
 eol       : '\n'

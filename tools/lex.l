@@ -320,7 +320,7 @@ pad           { return T_PAD; }
 
 <CMD>{
 {IDENT}       { yylval.string = estrdup (yytext); return T_IDENT; }
-[^ \"\t\n;\[\]{},=]+  { yylval.string = estrdup (yytext); return T_WORD; }
+[^ \"\t\n;\[\]{},=|]+  { yylval.string = estrdup (yytext); return T_WORD; }
 \"[^\\\"\n]*\"     {
                      yylval.string = emalloc (yyleng - 1);
                      memcpy (yylval.string, yytext+1, yyleng-2);
@@ -337,6 +337,26 @@ pad           { return T_PAD; }
 		     string_addc (unescape (yytext[yyleng-1]));
                      BEGIN (STR); }
 ;                  { BEGIN (INITIAL); return ';'; }
+"|"[\ t]*[^\n]*\n    {
+  int i, len;
+
+  yyless (yyleng - 1);
+  BEGIN (INITIAL);
+
+  for (i = 1; i < yyleng && (yytext[i] == ' ' || yytext[i] == '\t'); i++)
+    ;
+  if (i == yyleng)
+    {
+      yyerror (_("malformed pipeline"));
+      return T_BOGUS;
+    }
+  len = yyleng - i;
+  yylval.string = emalloc (len + 1);
+  memcpy (yylval.string, yytext + i, len);
+  yylval.string[len] = 0;
+
+  return T_PIPELINE;
+ }
 {WS}               ; 
 }
 

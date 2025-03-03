@@ -3182,10 +3182,10 @@ example, @code{co} can be used instead of @code{count} and @code{ca}
 instead of @code{cache}.
 
 Any sequence of non-whitespace characters appearing after the command
-verb forms an argument.  If the argument contains whitespace or
-unprintable characters it must be enclosed in double quotes.  Within
-double quotes the usual @dfn{escape sequences} are understood, as
-shown in the table below:
+verb forms an argument.  If the argument contains whitespace, pipe
+(@samp{|}) or unprintable characters it must be enclosed in double
+quotes.  Within double quotes the usual @dfn{escape sequences} are
+understood, as shown in the table below:
 
 @float Table, backslash-interpretation
 @caption{Backslash escapes}
@@ -3232,8 +3232,9 @@ edited (@pxref{Command Line Editing, ,
 Command Line Editing, readline, GNU Readline Library}).
 
 @menu
-* variables::      shell variables.
-* commands::       shell commands.
+* variables::      gdbmtool shell variables.
+* commands::       gdbmtool shell commands.
+* pipelines::      gdbmtool pipelines.
 * definitions::    how to define structured data.
 * startup files::
 @end menu
@@ -3296,6 +3297,8 @@ output lines is greater then the number of lines on your screen.
 
 The default value is inherited from the environment variable
 @env{PAGER}.  Unsetting this variable disables paging.
+
+The pager is disabled if a pipeline is used (@pxref{pipelines}).
 @end deftypevr
 
 @deftypevr {gdbmtool variable} string ps1
@@ -3853,6 +3856,28 @@ Upgrade the database from standard to extended database format.
 @deffn {command verb} version
 Print the version of @command{gdbm}.
 @end deffn
+
+@node pipelines
+@subsection Pipelines
+@cindex pipeline
+@cindex pipe
+
+A @command{gdbmtool} command can be followed by a pipe sign (@samp{|})
+and a shell command.  This construct (a @dfn{pipeline}) works the same
+way as in Bourne shell: the output of @command{gdbmtool} command to
+the left of @samp{|} is connected to the input of the shell command to
+the right of it. This latter command will be run using @code{$SHELL -c}.
+
+For example, to print the directory of the GDBM file sorted by bucket
+address, one would do:
+
+@example
+dir | sed 1,4d | sort -k3n
+@end example
+
+@noindent
+(the table begins at line 5, so first four lines are removed, and the
+bucket address is listed in column 3).
 
 @node definitions
 @subsection Data Definitions

@@ -1,4 +1,4 @@
-GNU dbm NEWS -- history of user-visible changes. 2025-02-06
+GNU dbm NEWS -- history of user-visible changes. 2025-03-03
 Copyright (C) 1990-2024 Free Software Foundation, Inc.
 See the end of file for copying conditions.
 
@@ -20,7 +20,12 @@ for the buckets identified by its arguments:
   collisions N0 N1
      Display collisions for the range of buckets [N0, N1].
 
-* Fix bug in block coalescing code
+* Pipelines in gdbmtool
+
+The output of a gdbmtool command can be connected to the input of a
+shell command using the traditional pipeline syntax.
+
+* Fix a bug in block coalescing code
 
 * Other bugfixes
 

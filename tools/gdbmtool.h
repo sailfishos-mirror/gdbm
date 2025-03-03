@@ -274,6 +274,7 @@ struct pagerfile
 
 typedef struct pagerfile PAGERFILE;
 
+PAGERFILE *pager_create (char const *pager);
 PAGERFILE *pager_open (FILE *stream, size_t maxlines, char const *pager);
 void pager_close (struct pagerfile *pfp);
 ssize_t pager_write (struct pagerfile *pfp, const char *buffer, size_t size);
@@ -300,7 +301,7 @@ struct command_environ
 struct command;
 int command_lookup (const char *str, struct locus *loc, struct command **pcmd);
 
-int run_command (struct command *cmd, struct gdbmarglist *arglist);
+int run_command (struct command *cmd, struct gdbmarglist *arglist, char *pipe);
 int run_last_command (void);
 
 struct xdatum;

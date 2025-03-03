@@ -157,6 +157,11 @@ opendb (char *dbname, int fd)
       gdbm_setopt (db, GDBM_CACHESIZE, &cache_size, sizeof (int)) == -1)
     dberror (_("%s failed"), "GDBM_CACHESIZE");
 
+  if (gdbm_file)
+    gdbm_close (gdbm_file);
+
+  gdbm_file = db;
+
   if (variable_is_true ("coalesce"))
     {
       gdbmshell_setopt ("GDBM_SETCOALESCEBLKS", GDBM_SETCOALESCEBLKS, 1);
@@ -166,10 +171,6 @@ opendb (char *dbname, int fd)
       gdbmshell_setopt ("GDBM_SETCENTFREE", GDBM_SETCENTFREE, 1);
     }
 
-  if (gdbm_file)
-    gdbm_close (gdbm_file);
-
-  gdbm_file = db;
   return GDBMSHELL_OK;
 }
 
@@ -3014,6 +3015,7 @@ coerce (struct gdbmarg *arg, struct argdef *def)
 
 static struct command *last_cmd;
 static struct gdbmarglist last_args;
+static char *last_pipeline;
 
 int
 run_last_command (void)
@@ -3030,7 +3032,7 @@ run_last_command (void)
 	      gdbmarglist_free (&last_args);
 	      /* FALLTHROUGH */
 	    case REPEAT_ALWAYS:
-	      return run_command (last_cmd, &last_args);
+	      return run_command (last_cmd, &last_args, last_pipeline);
 
 	    default:
 	      abort ();
@@ -3221,7 +3223,7 @@ argsprep (struct command *cmd, struct gdbmarglist *arglist,
 }
 
 int
-run_command (struct command *cmd, struct gdbmarglist *arglist)
+run_command (struct command *cmd, struct gdbmarglist *arglist, char *pipeline)
 {
   int i;
   char *pager = NULL;
@@ -3261,7 +3263,10 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
       rc = 0;
       if (!(cmd->begin && (rc = cmd->begin (&param, &cenv)) != 0))
 	{
-	  cenv.pager = pager_open (stdout, get_screen_lines (), pager);
+	  if (pipeline)
+	    cenv.pager = pager_create (pipeline);
+	  else
+	    cenv.pager = pager_open (stdout, get_screen_lines (), pager);
 
 	  timing_start (&tm);
 	  rc = cmd->handler (&param, &cenv);
@@ -3296,6 +3301,8 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
 	  gdbmarglist_free (&last_args);
 	  last_args = *arglist;
 	}
+      free (last_pipeline);
+      last_pipeline = NULL;
       rc = 0;
       break;
 
@@ -3309,6 +3316,7 @@ run_command (struct command *cmd, struct gdbmarglist *arglist)
 
     default:
       gdbmarglist_free (arglist);
+      free (pipeline);
       rc = 0;
     }
 

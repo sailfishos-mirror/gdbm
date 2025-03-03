@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with GDBM. If not, see <http://www.gnu.org/licenses/>. */
-.TH GDBMTOOL 1 "August 1, 2021" "GDBM" "GDBM User Reference"
+.TH GDBMTOOL 1 "March 3, 2025" "GDBM" "GDBM User Reference"
 .SH NAME
 gdbmtool \- examine and modify a GDBM database
 .SH SYNOPSIS
@@ -296,6 +296,15 @@ Unsets listed variables.
 .BR version
 Print the version of
 .BR gdbm .
+.SH PIPES
+A command can be followed by a pipe sign (\fB|\fR) and a shell
+command.  The meaning is the same as in Bourne shell: the output of
+the
+.B gdbmtool
+command is connected to the input of a shell command specified on the 
+right side of
+.BR | .
+In this case pager is disabled.
 .SH "DATA DEFINITIONS"
 The \fBdefine\fR statement provides a mechanism for defining key or
 content structures.  It is similar to the \fBC\fR \fBstruct\fR

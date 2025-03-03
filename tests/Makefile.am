@@ -55,6 +55,7 @@ TESTSUITE_AT = \
  cloexec02.at\
  cloexec03.at\
  closerr.at\
+ coalesce.at\
  conv.at\
  dbmcreate00.at\
  dbmdel00.at\
@@ -74,6 +75,7 @@ TESTSUITE_AT = \
  gdbmtool01.at\
  gdbmtool02.at\
  gdbmtool03.at\
+ gdbmtool04.at\
  fetch00.at\
  fetch01.at\
  setopt00.at\
