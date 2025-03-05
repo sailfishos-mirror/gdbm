@@ -18,7 +18,7 @@ AT_SETUP([Pipe])
 AT_KEYWORDS([gdbmtool pipe])
 AT_CHECK([
 AT_DATA([input],
-[version | sed -e 's/^GDBM version //' -e 's/(.*)//' -e 's/\. *$//'
+[version | sed -e 's/^GDBM version //' -e 's/\. .*$//'
 ])
 gdbmtool -f input
 ],
