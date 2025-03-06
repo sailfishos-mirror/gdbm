@@ -99,7 +99,15 @@ AM_GNU_GETTEXT_REQUIRE_VERSION([0.19])
 
 AC_CHECK_HEADERS([sys/file.h string.h locale.h getopt.h])
 
-AC_CHECK_FUNCS([ftruncate flock lockf fsync setlocale getopt_long getline])
+AC_CHECK_FUNCS([ftruncate flock lockf fsync setlocale getopt_long getline \
+ timer_settime])
+
+AC_SUBST([LTRT])
+AC_CHECK_LIB([rt], [timer_settime],
+ [if test x$ac_cv_func_timer_settime = xno; then
+    AC_DEFINE([HAVE_TIMER_SETTIME],[1])
+    LTRT=-lrt
+  fi])
 
 if test x$mapped_io = xyes
 then

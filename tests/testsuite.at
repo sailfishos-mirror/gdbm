@@ -47,6 +47,10 @@ m4_include([closerr.at])
 
 m4_include([dumpload.at])
 
+AT_BANNER([GDBM locking])
+m4_include([lockwait_ret.at])
+m4_include([lockwait_sig.at])
+
 AT_BANNER([Block size selection])
 m4_include([blocksize00.at])
 m4_include([blocksize01.at])

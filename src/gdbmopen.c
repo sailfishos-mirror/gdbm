@@ -232,17 +232,84 @@ _gdbm_ftruncate (GDBM_FILE dbf)
 #endif
 }
 
-GDBM_FILE 
-gdbm_fd_open (int fd, const char *file_name, int block_size,
-	      int flags, void (*fatal_func) (const char *))
+void
+gdbm_open_spec_init (struct gdbm_open_spec *spec)
 {
+  memset (spec, 0, sizeof (*spec));
+  spec->fd = -1;
+  spec->mode = 0600;
+  spec->lock_wait = GDBM_LOCKWAIT_NONE;
+}
+
+GDBM_FILE
+gdbm_open_ext (char const *file_name, int flags,
+	       struct gdbm_open_spec const *op)
+{
+  int fd;
   GDBM_FILE dbf;		/* The record to return. */
   struct stat file_stat;	/* Space for the stat information. */
   off_t       file_pos;		/* Used with seeks. */
-  int 	      index;		/* Used as a loop index. */
-  
+  int	      index;		/* Used as a loop index. */
+
   /* Initialize the gdbm_errno variable. */
   gdbm_set_errno (NULL, GDBM_NO_ERROR, FALSE);
+
+  if (file_name == NULL)
+    {
+      errno = EINVAL;
+      GDBM_SET_ERRNO2 (NULL, GDBM_FILE_OPEN_ERROR, FALSE, GDBM_DEBUG_OPEN);
+      return NULL;
+    }
+
+  if (op == NULL)
+    {
+      static struct gdbm_open_spec default_open_spec = {
+	.fd = -1,
+	.mode = 0600,
+	.block_size = 0,
+	.fatal_func = NULL
+      };
+      op = &default_open_spec;
+    }
+
+  if (op->fd == -1)
+    {
+      /* additional bits for open(2) flags */
+      int fbits = 0;
+
+      switch (flags & GDBM_OPENMASK)
+	{
+	case GDBM_READER:
+	  fbits = O_RDONLY;
+	  break;
+
+	case GDBM_WRITER:
+	  fbits = O_RDWR;
+	  break;
+
+	case GDBM_WRCREAT:
+	case GDBM_NEWDB:
+	  fbits = O_RDWR|O_CREAT;
+	  break;
+
+	default:
+	  errno = EINVAL;
+	  GDBM_SET_ERRNO2 (NULL, GDBM_FILE_OPEN_ERROR, FALSE, GDBM_DEBUG_OPEN);
+	  return NULL;
+	}
+      if (flags & GDBM_CLOEXEC)
+	fbits |= O_CLOEXEC;
+
+      fd = open (file_name, fbits, op->mode);
+      if (fd < 0)
+	{
+	  GDBM_SET_ERRNO2 (NULL, GDBM_FILE_OPEN_ERROR, FALSE, GDBM_DEBUG_OPEN);
+	  return NULL;
+	}
+      flags |= GDBM_CLOERROR;
+    }
+  else
+    fd = op->fd;
 
   /* Get the status of the file. */
   if (fstat (fd, &file_stat))
@@ -293,7 +360,7 @@ gdbm_fd_open (int fd, const char *file_name, int block_size,
     }
 
   /* Initialize the fatal error routine. */
-  dbf->fatal_err = fatal_func;
+  dbf->fatal_err = op->fatal_func;
 
   dbf->fast_write = TRUE;	/* Default to setting fast_write. */
   dbf->file_locking = TRUE;	/* Default to doing file locking. */
@@ -336,7 +403,7 @@ gdbm_fd_open (int fd, const char *file_name, int block_size,
   /* Lock the file in the appropriate way. */
   if (dbf->file_locking)
     {
-      if (_gdbm_lock_file (dbf) == -1)
+      if (_gdbm_lock_file_wait (dbf, op) == -1)
 	{
 	  if (!(flags & GDBM_CLOERROR))
 	    dbf->desc = -1;
@@ -377,6 +444,7 @@ gdbm_fd_open (int fd, const char *file_name, int block_size,
   if (file_stat.st_size == 0)
     {
       /* This is a new file.  Create an empty database.  */
+      int block_size = op->block_size;
       int dir_size, dir_bits;
       
       /* Start with the blocksize. */
@@ -686,7 +754,19 @@ gdbm_fd_open (int fd, const char *file_name, int block_size,
      information structure.  */
   return dbf;
 }
-  
+
+GDBM_FILE
+gdbm_fd_open (int fd, const char *file_name, int block_size,
+	      int flags, void (*fatal_func) (const char *))
+{
+  struct gdbm_open_spec spec = {
+    .fd = fd,
+    .block_size = block_size,
+    .fatal_func = fatal_func
+  };
+  return gdbm_open_ext (file_name, flags, &spec);
+}
+
 /* Initialize dbm system.  FILE is a pointer to the file name.  If the file
    has a size of zero bytes, a file initialization procedure is performed,
    setting up the initial structure in the file.  BLOCK_SIZE is used during
@@ -711,41 +791,13 @@ GDBM_FILE
 gdbm_open (const char *file, int block_size, int flags, int mode,
      	   void (*fatal_func) (const char *))
 {
-  int fd;
-  /* additional bits for open(2) flags */
-  int fbits = 0;
-
-  switch (flags & GDBM_OPENMASK)
-    {
-    case GDBM_READER:
-      fbits = O_RDONLY;
-      break;
-
-    case GDBM_WRITER:
-      fbits = O_RDWR;
-      break;
-
-    case GDBM_WRCREAT:
-    case GDBM_NEWDB:
-      fbits = O_RDWR|O_CREAT;
-      break;
-
-    default:
-      errno = EINVAL;
-      GDBM_SET_ERRNO2 (NULL, GDBM_FILE_OPEN_ERROR, FALSE, GDBM_DEBUG_OPEN);
-      return NULL;
-    }
-  if (flags & GDBM_CLOEXEC)
-    fbits |= O_CLOEXEC;
-  
-  fd = open (file, fbits, mode);
-  if (fd < 0)
-    {
-      GDBM_SET_ERRNO2 (NULL, GDBM_FILE_OPEN_ERROR, FALSE, GDBM_DEBUG_OPEN);
-      return NULL;
-    }
-  return gdbm_fd_open (fd, file, block_size, flags | GDBM_CLOERROR,
-		       fatal_func);
+  struct gdbm_open_spec spec = {
+    .fd = -1,
+    .mode = mode,
+    .block_size = block_size,
+    .fatal_func = fatal_func
+  };
+  return gdbm_open_ext (file, flags, &spec);
 }
 
 int

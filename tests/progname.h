@@ -15,6 +15,8 @@
    along with GDBM. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <string.h>
+
 const char *
 canonical_progname (const char *str)
 {

@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with GDBM. If not, see <http://www.gnu.org/licenses/>. */
-.TH GDBMTOOL 1 "March 3, 2025" "GDBM" "GDBM User Reference"
+.TH GDBMTOOL 1 "March 6, 2025" "GDBM" "GDBM User Reference"
 .SH NAME
 gdbmtool \- examine and modify a GDBM database
 .SH SYNOPSIS
@@ -154,40 +154,40 @@ Print a list of available options.
 Print program version
 .SH SHELL COMMANDS
 .TP
-.BR avail 
-Print the 
+.B avail
+Print the
 .BR "avail list" .
 .TP
 \fBbucket\fR \fINUM\fR
 Print the bucket number \fINUM\fR and set is as the current one.
 .TP
-.BR cache
+.B cache
 Print the bucket cache.
 .TP
 .B close
 Close the currently open database.
 .TP
-.BR count
+.B count
 Print the number of entries in the database.
 .TP
-.BR current
+.B current
 Print the current bucket.
 .TP
 \fBdelete\fR \fIKEY\fR
 Delete record with the given \fIKEY\fR.
 .TP
-.BR dir
+.B dir
 Print hash directory.
 .TP
-.BR downgrade
+.B downgrade
 Downgrade the database from the extended \fInumsync\fR format to the
 standard format.
 .TP
 \fBexport\fR \fIFILE\-NAME\fR [\fBtruncate\fR] [\fBbinary\fR|\fBascii\fR]
 Export the database to the flat file \fIFILE\-NAME\fR.  This is equivalent to
 .BR gdbm_dump (1).
-
-This command will not overwrite an existing file, unless the 
+.IP
+This command will not overwrite an existing file, unless the
 .B truncate
 parameter is also given.  Another optional parameter determines the type of
 the dump (*note Flat files::).  By default, ASCII dump will be created.
@@ -195,7 +195,7 @@ the dump (*note Flat files::).  By default, ASCII dump will be created.
 \fBfetch\fR \fIKEY\fR
 Fetch and display the record with the given \fIKEY\fR.
 .TP
-.BR first
+.B first
 Fetch and display the first record in the database.  Subsequent
 records can be fetched using the
 .B next
@@ -204,7 +204,7 @@ command (see below).
 \fBhash\fR \fIKEY\fR
 Compute and display the hash value for the given \fIKEY\fR.
 .TP
-.BR header
+.B header
 Print file header.
 .TP
 .BR help " or " ?
@@ -243,7 +243,7 @@ given, the record following the one with this key will be fetched.
 Open the database file \fIFILE\fR.  If successful, any previously
 open database is closed.  Otherwise, if the operation fails, the
 currently opened database remains unchanged.
-
+.IP
 This command takes additional information from the variables
 .BR open ,
 .BR lock ,
@@ -256,7 +256,7 @@ for a detailed description of these.
 .B quit
 Close the database and quit the utility.
 .TP
-.BR reorganize
+.B reorganize
 Reorganize the database.
 .TP
 \fBset\fR [\fIVAR\fR=\fIVALUE\fR...]
@@ -276,7 +276,7 @@ in the
 \fBsource\fR \fIFILE\fR
 Read commands from the given \fIFILE\fR.
 .TP
-.BR status
+.B status
 Print current program status.
 .TP
 \fBstore\fR \fIKEY\fR \fIDATA\fR
@@ -293,7 +293,7 @@ format.
 \fBunset\fR \fIVARIABLE\fR...
 Unsets listed variables.
 .TP
-.BR version
+.B version
 Print the version of
 .BR gdbm .
 .SH PIPES
@@ -301,7 +301,7 @@ A command can be followed by a pipe sign (\fB|\fR) and a shell
 command.  The meaning is the same as in Bourne shell: the output of
 the
 .B gdbmtool
-command is connected to the input of a shell command specified on the 
+command is connected to the input of a shell command specified on the
 right side of
 .BR | .
 In this case pager is disabled.
@@ -370,10 +370,10 @@ For example:
 .nf
 .in +4
 \fBdefine content {
-        int status,
-        pad 8,
-        char id[3],
-        stringz name
+	int status,
+	pad 8,
+	char id[3],
+	stringz name
 }\fR
 .fi
 .PP
@@ -383,7 +383,7 @@ simplified construct can be used:
 .nf
 .in +4
 \fBdefine\fR \fBkey\fR|\fBcontent\fR \fItype\fR
-.fi        
+.fi
 .PP
 where \fItype\fR is one of the types discussed above.
 .PP
@@ -402,7 +402,7 @@ such as truncating the existing database.  Default is
 Primary prompt string.  Its value can contain \fIconversion
 specifiers\fR, consisting of the \fB%\fR character followed by another
 character.  These specifiers are expanded in the resulting prompt as
-follows: 
+follows:
 .sp
 .nf
 .ta 8n 20n
@@ -424,25 +424,25 @@ Secondary prompt.  See
 for a description of its value.
 This prompt is displayed before reading the second and subsequent
 lines of a multi-line command.
-
+.IP
 The default value is \fB%_>%_\fR.
 .TP
 .BR delim1 ", string"
 A string used to delimit fields of a structured datum on output
 (see the section \fBDATA DEFINITIONS\fR).
-
+.IP
 Default is \fB,\fR (a comma).  This variable cannot be unset.
 .TP
 .BR delim2 ", string"
 A string used to delimit array items when printing a structured datum.
-
+.IP
 Default is \fB,\fR (a comma).  This variable cannot be unset.
 .TP
 .BR pager ", string"
 The name and command line of the pager program to pipe output to.
 This program is used in interactive mode when the estimated number of
 output lines is greater then the number of lines on your screen.
-
+.IP
 The default value is inherited from the environment variable
 \fBPAGER\fR.  Unsetting this variable disables paging.
 .TP
@@ -462,7 +462,7 @@ Sets the block size.  Unset by default.
 Open mode.  The following values are allowed:
 .RS 7
 .TP
-.BR newdb
+.B newdb
 Truncate the database if it exists or create a new one.  Open it in
 read-write mode.
 .TP
@@ -500,7 +500,7 @@ data space.
 .SH "REPORTING BUGS"
 Report bugs to <bug\-gdbm@gnu.org>.
 .SH COPYRIGHT
-Copyright \(co 2013-2021 Free Software Foundation, Inc
+Copyright \(co 2013-2025 Free Software Foundation, Inc
 .br
 .na
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>

@@ -31,6 +31,7 @@
 
 # include <stdio.h>
 # include <sys/types.h>
+# include <time.h>
 
 /* GDBM C++ support */
 # if defined(__cplusplus) || defined(c_plusplus)
@@ -121,6 +122,40 @@ extern int const gdbm_version_number[3];
 
 /* GDBM external functions. */
 
+enum
+  {
+    GDBM_LOCKWAIT_NONE,
+    GDBM_LOCKWAIT_RETRY,
+    GDBM_LOCKWAIT_SIGNAL,
+  };
+
+struct gdbm_open_spec
+{
+  int fd;              /* Unless -1, this is the handle of an already opened
+			  database file.  gdbm_open_ext will use it instead
+			  of opening the named file with open(2). */
+  int mode;            /* File mode in case it will be created. */
+  int block_size;      /* Block size to use when creating new file.  0 stands
+			  for default. */
+  int lock_wait;       /* Method for waiting for database to become available.
+			  GDBM_LOCKWAIT_NONE means return immediately, if the
+			  database cannot be locked.  Otherwise, block until
+			  the file is locked or timeout expires. */
+  struct timespec lock_timeout;  /* Locking timeout. */
+  struct timespec lock_interval; /* For GDBM_LOCKWAIT_RETRY, interval to
+				    sleep between two successive locking
+				    attempts. */
+
+  void (*fatal_func) (const char *); /* Function to call before returning
+					fatal error. Deprecated. */
+};
+
+#define GDBM_OPEN_SPEC_INITIALIZER \
+  { .fd = -1, .mode = 0600, .lock_wait = GDBM_LOCKWAIT_NONE }
+
+extern void gdbm_open_spec_init (struct gdbm_open_spec *spec);
+extern GDBM_FILE gdbm_open_ext (char const *file_name, int flags,
+				struct gdbm_open_spec const *op);
 extern GDBM_FILE gdbm_fd_open (int fd, const char *file_name, int block_size,
 			       int flags, void (*fatal_func) (const char *));
 extern GDBM_FILE gdbm_open (const char *, int, int, int,

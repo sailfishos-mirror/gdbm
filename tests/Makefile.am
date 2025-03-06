@@ -81,6 +81,8 @@ TESTSUITE_AT = \
  setopt00.at\
  setopt01.at\
  setopt02.at\
+ lockwait_ret.at\
+ lockwait_sig.at\
  version.at\
  wordwrap.at
 
@@ -130,6 +132,7 @@ check_PROGRAMS = \
  gtver\
  num2word\
  t_dumpload\
+ t_lockwait\
  t_wordwrap\
  $(DBMPROGS)
 

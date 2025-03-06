@@ -32,7 +32,7 @@ VI_REVISION = 0
 VI_AGE      = 0
 
 lib_LTLIBRARIES = libgdbm.la
-libgdbm_la_LIBADD = @LTLIBINTL@
+libgdbm_la_LIBADD = @LTLIBINTL@ @LTRT@
 
 libgdbm_la_SOURCES = \
  gdbmclose.c\

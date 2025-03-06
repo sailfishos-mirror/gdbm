@@ -387,6 +387,7 @@ The arguments are:
 The name of the file (the complete name, @command{GDBM} does not append any
 characters to this name).
 
+@anchor{block_size}
 @item block_size
 This parameter is used only when @code{gdbm_open} has to create a new
 database file and represents the size of a single transfer from disk to
@@ -544,6 +545,124 @@ value passed in the @var{flags} argument:
 @defvr {gdbm_open flag} GDBM_CLOERROR
 Close @var{fd} before exiting on error.
 @end defvr
+@end deftypefn
+
+@anchor{gdbm_open_ext}
+@deftypefn {gdbm interface} GDBM_FILE gdbm_open_ext (char const *@var{name}, @
+ int @var{flags}, struct gdbm_open_spec const *@var{spec})
+This is a general purpose interface function, that combines the
+possibilities of @code{gdbm_open} and @code{gdbm_fd_open}@footnote{As a
+matter of fact, both @code{gdbm_open} and @code{gdbm_fd_open} are just
+wrappers over a call to @code{gdbm_open_ext} with appropriately
+prepared last argument.}, and offers additional control over how the
+database is locked.
+
+The parameters @var{name} and @var{flags} have the same meaning as for
+@code{gdbm_open}.  Additional information is supplied via @var{spec}.
+If it is @code{NULL}, default values are assumed, so that
+
+@example
+gdbm_open_ext(@var{name}, @var{flags}, NULL)
+@end example
+
+@noindent
+is equivalent to
+
+@example
+gdbm_open(@var{name}, 0, @var{flags}, 0600, NULL)
+@end example
+
+@tpindex gdbm_open_spec
+The structure @code{gdbm_open_spec} contains at least the following
+fields:
+
+@deftypecv {member} gdbm_open_spec int fd
+Unless set to @code{-1}, this is the file descriptor of the database
+file obtained by a call to @code{open}(2), @code{creat}(2) or similar
+functions.  The function will act as @code{gdbm_fd_open}: it will
+create and initialize the @code{GDBM_FILE} object using this file
+descriptor.
+@end deftypecv
+
+@deftypecv {member} gdbm_open_spec int mode
+File mode@footnote{@xref{chmod,,,chmod(2),chmod(2) man page},
+and @xref{open,,open a file,open(2), open(2) man page}.},
+which is used if the file is created.
+@end deftypecv
+
+@deftypecv {member} gdbm_open_spec int block_size
+Block size to be used when creating new database.  @code{0} stands for
+default value.  @xref{block_size}, for a detailed discussion.
+@end deftypecv
+
+@deftypecv {member} gdbm_open_spec int lock_wait
+This field, together with the two fields described below, controls how
+long will @code{gdbm_open_ext} wait if the database is locked by
+another process.  For a detailed discussion, @ref{Locking}.
+Its possible values are:
+
+@defvr {lock_wait} GDBM_LOCKWAIT_NONE
+If the database is locked, return @code{NULL} immediately.  The
+@code{gdbm_errno} variable will be set to @code{GDBM_CANT_BE_READER}
+or @code{GDBM_CANT_BE_READER}, depending on the access mode, requested
+by @var{flags}.  This is the default.
+@end defvr
+
+@defvr {lock_wait} GDBM_LOCKWAIT_RETRY
+If the database is locked, sleep for the amount of time defined by the
+@code{lock_interval} field, and retry the attempt.  In case of failure,
+repeat until total time spent exceeds
+@code{lock_timeout} (see below).
+@end defvr
+
+@defvr {lock_wait} GDBM_LOCKWAIT_SIGNAL
+If the database is locked, wait for it to become available for at
+most the time interval set by the @code{lock_timeout} field.  In the
+contrast to the @code{GDBM_LOCKWAIT_RETRY}, this method does not
+require multiple attempts and, consequently, does not use the
+@code{lock_interval} field.  The database is locked as soon as other
+process relinquishes the lock.  The drawback is that it relies on
+delivery of a signal in case of timeout, so it is not advised to use
+this method in multi-threaded programs.
+@end defvr
+@end deftypecv
+
+@deftypecv {member} gdbm_open_spec struct timespec lock_timeout
+Specifies the timeout for file locking operation, in case
+@code{lock_wait} is @code{GDBM_LOCKWAIT_RETRY} or
+@code{GDBM_LOCKWAIT_SIGNAL}.
+
+@xref{Locking}.
+@end deftypecv
+
+@deftypecv {member} gdbm_open_spec struct timespec lock_interval
+Specifies the time interval between two successive locking attempts,
+of @code{lock_wait} is @code{GDBM_LOCKWAIT_RETRY}.
+
+@xref{Locking}.
+@end deftypecv
+
+The values of @code{lock_wait}, @code{lock_timeout} and
+@code{lock_interval} fields are ignored if the @code{GDBM_NOLOCK} bit
+is set in @var{flags} parameter.
+@end deftypefn
+
+@defvr {struct gdbm_open_spec} GDBM_OPEN_SPEC_INITIALIZER
+A macro for static initialization of @code{struct gdbm_open_spec}
+variable with default values.  Example usage:
+
+@example
+struct gdbm_open_spec spec = GDBM_OPEN_SPEC_INITIALIZER;
+@end example
+
+This sets @code{fd = -1}, @code{mode = 0600},
+@code{lock_wait = GDBM_LOCKWAIT_NONE}, and initializes the rest of
+fields with @code{0}.
+@end defvr
+
+@deftypefn {gdbm interface} void gdbm_open_spec_init (struct gdbm_open_spec *@var{spec})
+Initializes the structure pointed to by @var{spec}.  The resulting
+settings are the same as for @code{GDBM_OPEN_SPEC_INITIALIZER}.
 @end deftypefn
 
 @deftypefn {gdbm interface} int gdbm_copy_meta (GDBM_FILE @var{dst},@
@@ -2322,13 +2441,109 @@ Return the block size in bytes.  The @var{value} should point to @code{int}.
 @chapter File Locking
 @cindex locking
 
-@kwindex GDBM_NOLOCK
-With locking disabled (if @code{gdbm_open} was called with @code{GDBM_NOLOCK}),
-the user may want to perform their own file locking on the database file
-in order to prevent multiple writers operating on the same file
-simultaneously.
+@kwindex GDBM_CANT_BE_WRITER
+@kwindex GDBM_CANT_BE_READER
+After opening a database file, GDBM locks it to ensure that the file
+won't be modified by a third party while in use by the library.
+Exclusive lock is applied if the file is opened for writing
+(@code{GDBM_NEWDB} or @code{GDBM_WRITER}), and shared lock is used if
+it is opened for reading (@code{GDBM_READER}).  If the file is already
+in use and locked by another process, @code{gdbm_open} will fail and
+return @code{NULL}.  To indicate the reason of the failure, the
+@code{gdbm_errno} variable will be set to @code{GDBM_CANT_BE_WRITER} or
+@code{GDBM_CANT_BE_READER}, depending on the requested access to the
+database file.  Normally, upon receiving such error codes, the program
+will retry opening the database file some time later, in the hope that
+the process that was working with it relinquishes the lock by that
+time.  To facilitate this task, GDBM offers alternative function
+that is able, among others, to wait for the lock for a predefined
+amount of time.
 
-In order to support this, the @code{gdbm_fdesc} routine is provided.
+@kwindex gdbm_open_ext
+@kwindex gdbm_open_spec
+The function @code{gdbm_open_ext} provides an extended interface for
+opening database files.  It takes three arguments: name of the
+database file to open, access flags, and a pointer to @code{struct
+gdbm_open_spec}, a structure that provides additional details for
+opening or creating the database.  Three fields of this structure are
+of particular interest: @code{lock_wait}, @code{lock_timeout}, and
+@code{lock_delay}.
+
+@kwindex lock_wait
+@kwindex GDBM_LOCKWAIT_RETRY
+The @code{lock_wait} field specifies @dfn{lock waiting mode}.
+Initializing it with @code{GDBM_LOCKWAIT_RETRY} instructs GDBM, upon
+failing to acquire the lock, to sleep for a predefined @dfn{interval}
+and retry locking.  If locking fails again, this procedure is
+repeated, until the lock is finally acquired or total time spent
+exceeds a predefined @dfn{timeout}, whichever happens first.
+
+@kwindex lock_timeout
+@kwindex lock_delay
+The interval and timeout are specified by two fields of @code{struct
+gdbm_open_spec}: @code{lock_interval} and @code{lock_timeout},
+correspondingly.  Both fields are of @code{struct timespec} type,
+which is defined as follows:
+
+@example
+@group
+struct timespec @{
+    time_t tv_sec;        /* seconds */
+    long   tv_nsec;       /* nanoseconds */
+@};
+@end group
+@end example
+
+@noindent
+The value of the nanoseconds field must be in the range 0 to
+999999999.
+
+@kwindex GDBM_OPEN_SPEC_INITIALIZER
+@kwindex gdbm_open_spec_init
+To make sure other fields of the @code{gdbm_open_spec} structure are
+set to meaningful values, it must be initialized by assigning it the
+value of @code{GDBM_OPEN_SPEC_INITIALIZER} macro or using the
+@code{gdbm_open_spec_init} function.
+
+The example below opens the file @samp{t.gdbm} for writing using the
+default lock waiting method, with 5 seconds timeout and 0.5 second
+interval between retries:
+
+@example
+@group
+struct gdbm_open_spec spec = GDBM_OPEN_SPEC_INITIALIZER;
+
+spec.lock_wait = GDBM_LOCKWAIT_RETRY;
+spec.lock_interval.tv_nsec = 500000000;
+spec.lock_timeout.tv_sec = 1;
+
+dbf = gdbm_open_ext("t.gdbm", GDBM_WRITER, &spec);
+@end group
+@end example
+
+@kwindex GDBM_LOCKWAIT_SIGNAL
+Another lock waiting mode is @code{GDBM_LOCKWAIT_SIGNAL}.  It differs
+from the default mode in that it uses a signal to measure the timeout,
+and it does not use the @code{lock_interval} field.  Only
+@code{lock_timeout} must be initialized.  This mode, however, is not
+suitable for use in multi-threaded programs.
+
+@xref{gdbm_open_ext}, for a detailed discussion of @code{gdbm_open_ext}
+function.
+
+@kwindex GDBM_NOLOCK
+Sometimes the user may want to perform their own file locking on the
+database file, instead of relying on the built-in mechanism.  To do
+so, the flags passed to @code{gdbm_open} must have the
+@code{GDBM_NOLOCK} bit set, e.g.:
+
+@example
+dbf = gdbm_open (filename, 0, GDBM_READER | GDBM_NOLOCK, 0, NULL);
+@end example
+
+To perform the locking, one must know the file descriptor
+corresponding to the opened @code{GDBM_FILE}, It is returned by the
+following function:
 
 @deftypefn {gdbm interface} int gdbm_fdesc (GDBM_FILE @var{dbf})
 Returns the file descriptor of the database @var{dbf}.  This value

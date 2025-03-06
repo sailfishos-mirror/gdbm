@@ -21,6 +21,8 @@
 
 #include "gdbmdefs.h"
 
+#include <sys/time.h>
+#include <signal.h>
 #include <errno.h>
 
 #if HAVE_FLOCK
@@ -55,24 +57,29 @@ enum
     TRY_LOCK_NEXT   /* Another error (including locking mechanism not
 		       available).  The caller should try next locking
 		       mechanism. */
-		       
+
   };
 
 /*
  * Locking using flock().
  */
 static int
-try_lock_flock (GDBM_FILE dbf)
+try_lock_flock (GDBM_FILE dbf, int nb)
 {
 #if HAVE_FLOCK
   if (flock (dbf->desc,
 	     ((dbf->read_write == GDBM_READER) ? LOCK_SH : LOCK_EX)
-	     | LOCK_NB) == 0)
+	     | (nb ? LOCK_NB : 0)) == 0)
     {
       return TRY_LOCK_OK;
     }
   else if (errno == EWOULDBLOCK)
     {
+      return TRY_LOCK_FAIL;
+    }
+  else if (errno == EINTR)
+    {
+      errno = ETIME;
       return TRY_LOCK_FAIL;
     }
 #endif
@@ -92,7 +99,7 @@ unlock_flock (GDBM_FILE dbf)
  */
 
 static int
-try_lock_lockf (GDBM_FILE dbf)
+try_lock_lockf (GDBM_FILE dbf, int nb)
 {
 #if HAVE_LOCKF
   /*
@@ -103,16 +110,18 @@ try_lock_lockf (GDBM_FILE dbf)
    */
   if (dbf->read_write != GDBM_READER)
     {
-      if (lockf (dbf->desc, F_TLOCK, (off_t)0L) == 0)
+      if (lockf (dbf->desc, nb ? F_TLOCK : F_LOCK, (off_t)0L) == 0)
 	return TRY_LOCK_OK;
 
       switch (errno)
 	{
+	case EINTR:
+	  errno = ETIME;
 	case EACCES:
 	case EAGAIN:
 	case EDEADLK:
 	  return TRY_LOCK_FAIL;
-	  
+
 	default:
 	  /* try next locking method */
 	  break;
@@ -135,7 +144,7 @@ unlock_lockf (GDBM_FILE dbf)
  */
 
 static int
-try_lock_fcntl (GDBM_FILE dbf)
+try_lock_fcntl (GDBM_FILE dbf, int nb)
 {
 #if HAVE_FCNTL_LOCK
   struct flock fl;
@@ -147,11 +156,13 @@ try_lock_fcntl (GDBM_FILE dbf)
     fl.l_type = F_WRLCK;
   fl.l_whence = SEEK_SET;
   fl.l_start = fl.l_len = (off_t)0L;
-  if (fcntl (dbf->desc, F_SETLK, &fl) == 0)
+  if (fcntl (dbf->desc, nb ? F_SETLK : F_SETLKW, &fl) == 0)
     return TRY_LOCK_OK;
 
   switch (errno)
     {
+    case EINTR:
+      errno = ETIME;
     case EACCES:
     case EAGAIN:
     case EDEADLK:
@@ -161,7 +172,7 @@ try_lock_fcntl (GDBM_FILE dbf)
       /* try next locking method */
       break;
     }
-  
+
 #endif
   return TRY_LOCK_NEXT;
 }
@@ -181,31 +192,34 @@ unlock_fcntl (GDBM_FILE dbf)
 
 /* Try each supported locking mechanism. */
 int
-_gdbm_lock_file (GDBM_FILE dbf)
+_gdbm_lock_file (GDBM_FILE dbf, int nb)
 {
   int res;
+  static int (*try_lock_fn[]) (GDBM_FILE, int) = {
+    [LOCKING_FLOCK] = try_lock_flock,
+    [LOCKING_LOCKF] = try_lock_lockf,
+    [LOCKING_FCNTL] = try_lock_fcntl
+  };
+  int i;
 
   dbf->lock_type = LOCKING_NONE;
-  if ((res = try_lock_flock (dbf)) == TRY_LOCK_OK)
-    dbf->lock_type = LOCKING_FLOCK;
-  else if (res == TRY_LOCK_NEXT)
+  for (i = 1; i < sizeof (try_lock_fn) / sizeof (try_lock_fn[0]); i++)
     {
-      if ((res = try_lock_lockf (dbf)) == TRY_LOCK_OK)
-	dbf->lock_type = LOCKING_LOCKF;
-      else if (res == TRY_LOCK_NEXT)
+      if ((res = try_lock_fn[i] (dbf, nb)) == TRY_LOCK_OK)
 	{
-	  if (try_lock_fcntl (dbf) == TRY_LOCK_OK)
-	    dbf->lock_type = LOCKING_FCNTL;
+	  dbf->lock_type = LOCKING_FLOCK;
+	  return 0;
 	}
+      else if (res != TRY_LOCK_NEXT)
+	break;
     }
-
-  return dbf->lock_type == LOCKING_NONE ? -1 : 0;
+  return -1;
 }
 
 void
 _gdbm_unlock_file (GDBM_FILE dbf)
 {
-  void (*unlock_fn[]) (GDBM_FILE) = {
+  static void (*unlock_fn[]) (GDBM_FILE) = {
     [LOCKING_FLOCK] = unlock_flock,
     [LOCKING_LOCKF] = unlock_lockf,
     [LOCKING_FCNTL] = unlock_fcntl
@@ -217,4 +231,157 @@ _gdbm_unlock_file (GDBM_FILE dbf)
       dbf->lock_type = LOCKING_NONE;
     }
 }
+
+enum { NANO = 1000000000L };
 
+static inline void
+timespec_sub (struct timespec *a, struct timespec const *b)
+{
+  a->tv_sec -= b->tv_sec;
+  a->tv_nsec -= b->tv_nsec;
+  if (a->tv_nsec < 0)
+    {
+      --a->tv_sec;
+      a->tv_nsec += NANO;
+    }
+}
+
+static inline void
+timespec_add (struct timespec *a, struct timespec const *b)
+{
+  a->tv_sec += b->tv_sec;
+  a->tv_nsec += b->tv_nsec;
+  if (a->tv_nsec >= NANO)
+    {
+      a->tv_sec += a->tv_nsec / NANO;
+      a->tv_nsec %= NANO;
+    }
+}
+
+static inline int
+timespec_cmp (struct timespec const *a, struct timespec const *b)
+{
+  if (a->tv_sec < b->tv_sec)
+    return -1;
+  if (a->tv_sec > b->tv_sec)
+    return 1;
+  if (a->tv_nsec < b->tv_nsec)
+    return -1;
+  if (a->tv_nsec > b->tv_nsec)
+    return 1;
+  return 0;
+}
+
+static int
+_gdbm_lockwait_retry (GDBM_FILE dbf, struct timespec const *ts,
+		      struct timespec const *iv)
+{
+  int ret;
+  struct timespec ttw = *ts;
+  struct timespec r;
+
+  if (ts == NULL || (ts->tv_sec == 0 && ts->tv_nsec == 0))
+    return _gdbm_lock_file (dbf, 1);
+
+  for (;;)
+    {
+      ret = _gdbm_lock_file (dbf, 1);
+      if (ret == 0)
+	break;
+      if (timespec_cmp (&ttw, iv) < 0)
+	break;
+      timespec_sub (&ttw, iv);
+      if (clock_nanosleep (CLOCK_REALTIME, 0, iv, &r))
+	{
+	  if (errno == EINTR)
+	    timespec_add (&ttw, &r);
+	  else
+	    break;
+	}
+    }
+  return ret;
+}
+
+static void
+signull (int sig)
+{
+  /* nothing */
+}
+
+static int
+_gdbm_lockwait_signal (GDBM_FILE dbf, struct timespec const *ts)
+{
+  int ret = -1;
+  int ec = 0;
+
+  if (ts == NULL || (ts->tv_sec == 0 && ts->tv_nsec == 0))
+    ret = _gdbm_lock_file (dbf, 1);
+  else
+    {
+      struct sigaction act, oldact;
+#if HAVE_TIMER_SETTIME
+      struct itimerspec itv;
+      timer_t timer;
+#else
+      struct itimerval itv, olditv;
+#endif
+
+      act.sa_handler = signull;
+      sigemptyset (&act.sa_mask);
+      act.sa_flags = 0;
+      if (sigaction (SIGALRM, &act, &oldact))
+	return -1;
+
+#if HAVE_TIMER_SETTIME
+      if (timer_create (CLOCK_REALTIME, NULL, &timer) == 0)
+	{
+	  itv.it_interval.tv_sec = 0;
+	  itv.it_interval.tv_nsec = 0;
+	  itv.it_value.tv_sec = ts->tv_sec;
+	  itv.it_value.tv_nsec = ts->tv_nsec;
+
+	  if (timer_settime (timer, 0, &itv, NULL) == 0)
+	    ret = _gdbm_lock_file (dbf, 0);
+	  ec = errno;
+
+	  timer_delete (timer);
+	}
+      else
+	ec = errno;
+#else
+      itv.it_interval.tv_sec = 0;
+      itv.it_interval.tv_usec = 0;
+      itv.it_value.tv_sec = ts->tv_sec;
+      itv.it_value.tv_usec = ts->tv_nsec / 1000000;
+
+      if (setitimer (ITIMER_REAL, &itv, &olditv) == 0)
+	ret = _gdbm_lock_file (dbf, 0);
+      ec = errno;
+
+      /* Reset the timer */
+      setitimer (ITIMER_REAL, &olditv, NULL);
+#endif
+      sigaction (SIGALRM, &oldact, NULL); //FIXME: error checking
+    }
+  if (ret != 0)
+    errno = ec;
+  return ret;
+}
+
+int
+_gdbm_lock_file_wait (GDBM_FILE dbf, struct gdbm_open_spec const *op)
+{
+  switch (op->lock_wait)
+    {
+    case GDBM_LOCKWAIT_NONE:
+      return _gdbm_lock_file (dbf, 1);
+
+    case GDBM_LOCKWAIT_RETRY:
+      return _gdbm_lockwait_retry (dbf, &op->lock_timeout, &op->lock_interval);
+
+    case GDBM_LOCKWAIT_SIGNAL:
+      return _gdbm_lockwait_signal (dbf, &op->lock_timeout);
+    }
+  errno = EINVAL;
+  return -1;
+}

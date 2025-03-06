@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with GDBM. If not, see <http://www.gnu.org/licenses/>. */
-.TH GDBM 3 "March 3, 2025" "GDBM" "GDBM User Reference"
+.TH GDBM 3 "March 6, 2025" "GDBM" "GDBM User Reference"
 .SH NAME
 GDBM \- The GNU database manager.  Includes \fBdbm\fR and \fBndbm\fR
 compatibility.
@@ -33,6 +33,15 @@ compatibility.
 .ti +21
 .BI "void (*" fatal_func ")(const char *))";
 .br
+.BI "GDBM_FILE gdbm_fd_open (int " FD ", const char *" name ", int " block_size ", "
+.ti +24
+.BI     "int " flags ", int " mode ", "
+.ti +24
+.BI "void (*" fatal_func ")(const char *))";
+.BI "GDBM_FILE gdbm_open_ext (const char *" name ", int " flags ", "
+.ti +25
+.BI     "struct gdbm_open_spec *" spec ");"
+.BI "void gdbm_open_spec_init (struct gdbm_open_spec *" spec ");"
 .BI "int gdbm_close (GDBM_FILE " dbf ");"
 .br
 .BI "int gdbm_store (GDBM_FILE " dbf ", datum " key ", datum " content ", int " flag ");"
@@ -75,19 +84,23 @@ This manpage is a short description of the \fBGDBM\fR library.
 For a detailed discussion, including examples and usage
 recommendations, refer to the \fBGDBM Manual\fR available in
 Texinfo format.  To access it, run:
-
-  \fBinfo gdbm\fR
-
+.PP
+.RS +4
+.B info gdbm
+.RE
+.PP
 The documentation is also available online at
-
-  \fBhttps://www.gnu.org/software/gdbm/manual\fR
-  
+.PP
+.RS +4
+.B https://www.gnu.org/software/gdbm/manual
+.RE
+.PP
 Should any discrepancies occur between this manpage and the
 \fBGDBM Manual\fR, the later shall be considered the authoritative
 source.
 .SH DESCRIPTION
 \fBGNU dbm\fR is a library of routines that manages data files that contain
-key/data pairs.  The access provided is that of storing, 
+key/data pairs.  The access provided is that of storing,
 retrieval, and deletion by key and a non-sorted traversal of all
 keys.  A process is allowed to use multiple data files at the
 same time.
@@ -96,26 +109,28 @@ A process that opens a gdbm file is designated as a "reader" or a
 "writer".  Only one writer may open a gdbm file and many readers may
 open the file.  Readers and writers can not open the gdbm file at the
 same time. The procedure for opening a gdbm file is:
-.PP
+.TP
 .BI "GDBM_FILE gdbm_open (const char *" name ", int " block_size ", "
-.ti +21
+.ti +14
 .BI     "int " flags ", int " mode ", "
-.ti +21
+.ti +14
 .BI "void (*" fatal_func ")(const char *))";
-.PP
+.IP
 \fIName\fR is the name of the file (the complete name,
 \fBgdbm\fR does not append any characters to this name).
-.PP
+.IP
 \fIBlock_size\fR is the size of a single transfer from disk to
 memory.  If the value is less than 512, the file system block size is
 used instead.  The size is adjusted so that the block can hold exact
 number of directory entries, so that the effective block size can be
 slightly greater than requested.  This adjustment is disabled if the
 \fBGDBM_BSEXACT\fR \fIflag\fR is used.
-.PP
+.IP
 The \fIflags\fR parameter is a bitmask, composed of the \fIaccess
 mode\fR and one or more modifier flags.  The \fIaccess mode\fR bit
-designates the process as a reader or writer and must be one of the following:
+designates the process as a reader or writer and must be one of the
+following:
+.RS +7
 .TP
 .B GDBM_READER
 reader
@@ -128,12 +143,14 @@ writer - if database does not exist create new one
 .TP
 .B GDBM_NEWDB
 writer - create new database regardless if one exists
-.PP
+.RE
+.IP
 Additional flags (\fImodifiers\fR) can be combined with these values
 by bitwise \fBOR\fR.  Not all of them are meaningful with all access
 modes.
-.PP
+.IP
 Flags that are valid for any value of access mode are:
+.RS +7
 .TP
 .B GDBM_CLOEXEC
 Set the \fIclose-on-exec\fR flag on the database file descriptor.
@@ -159,17 +176,19 @@ updates, especially for inserts: this will degrade performance.
 .sp
 This flag has no effect if \fBGDBM_NOMMAP\fR is given, or if the
 operating system does not support prefault reading.  It is known to
-work on Linux and FreeBSD kernels. 					     
+work on Linux and FreeBSD kernels.
 .TP
 .B GDBM_XVERIFY
 Enable additional consistency checks.  With this flag, eventual
 corruptions of the database are discovered when opening it, instead of
 when a corrupted structure is read during normal operation.  However,
 on large databases, it can slow down the opening process.
-.PP
+.RE
+.IP
 The following additional flags are valid when the database is opened
 for writing (\fBGDBM_WRITER\fR, \fBGDBM_WRCREAT\fR, or
 \fBGDBM_NEWDB\fR):
+.RS +7
 .TP
 .B GDBM_SYNC
 Causes all database operations to be synchronized to the disk.
@@ -185,10 +204,12 @@ below.
 A reverse of \fBGDBM_SYNC\fR: synchronize writes only when needed.
 This is the default.  This flag is provided only for compatibility
 with previous versions of GDBM.
-.PP
+.RE
+.IP
 The following flags can be used together with \fBGDBM_NEWDB\fR.  They
 also take effect when used with \fBGDBM_WRCREAT\fR, if the requested
 database file doesn't exist:
+.RS +7
 .TP
 .B GDBM_BSEXACT
 If this flag is set and the requested \fIblock_size\fR value cannot
@@ -205,17 +226,18 @@ suited for effective crash recovery.  For a detailed discussion, see
 the
 .B CRASH RECOVERY
 chapter below.
-.PP
+.RE
+.IP
 \fIMode\fR is the file mode (see
 .BR chmod (2)
 and
 .BR open (2)).
 It is used if the file is created.
-.PP
+.IP
 \fIFatal_func\fR is a function to be called when \fBgdbm\fR if
 it encounters a fatal error.  This parameter is deprecated and must
 always be \fBNULL\fR.
-.PP
+.IP
 The return value is the pointer needed by all other routines to
 access that gdbm file.  If the return is the \fBNULL\fR pointer,
 \fBgdbm_open\fR was not successful.  In this case, the reason of the
@@ -227,40 +249,136 @@ following call returns \fItrue\fR (non-zero value):
   gdbm_check_syserr(gdbm_open)
 .in
 .fi
-.PP
+.IP
 the system \fIerrno\fR variable must be examined in order to obtain more
 detail about the failure.
-.PP
+.TP
 .BI "GDBM_FILE gdbm_fd_open (int " FD ", const char *" name ", int " block_size ", "
-.ti +21
+.ti +17
 .BI     "int " flags ", int " mode ", "
-.ti +21
+.ti +17
 .BI "void (*" fatal_func ")(const char *))";
-.PP
+.IP
 This is an alternative entry point to \fBgdbm_open\fR.  \fIFD\fR is a
 valid file descriptor obtained as a result of a call to
 .BR open (2)
 or
 .BR creat (2).
-The function opens (or creates) a \fGDBM\fR database this descriptor
+The function opens (or creates) a \fBGDBM\fR database this descriptor
 refers to.  The descriptor is not \fBdup\fR'ed, and will be closed
 when the returned \fBGDBM_FILE\fR is closed.  Use
 .B dup (2)
 if that is not desirable.
-.PP
+.IP
 In case of error, the function behaves like \fBgdbm_open\fR and
 \fBdoes not close\fR \fIFD\fR.  This can be altered by the following
 value passed in \fIflags\fR:
+.RS +7
 .TP
 .B GDBM_CLOERROR
 Close \fIFD\fR before exiting on error.
-
+.RE
+.IP
 The rest of arguments are the same as for \fBgdbm_open\fR.
+.TP
+.BI "GDBM_FILE gdbm_open_ext (const char *" name ", int " flags ", "
+.ti +18
+.BI     "struct gdbm_open_spec *" spec ");"
+.IP
+This is an extended interface for opening and creating database
+files.  The meaning of
+.I name
+and
+.I flags
+is the same as described above.  Third argument,
+.IR spec ,
+is a pointer to a structure that supplies additional information about
+how to open the database.  It can be
+.BR NULL ,
+in which case the call is equivalent to
+.sp
+.nf
+.in +5
+.BI "gdbm_open (" name ", 0, " flags ", 0600, NULL)"
+.in
+.fi
+.IP
+The
+.B struct gdbm_open_ext
+type has at least the following fields:
+.RS +7
+.TP
+.B int fd
+Unless \fB\-1\fR, this is the file descriptor of an already opened
+database file.  The function will then act as improved \fBgdbm_fd_open\fR.
+.TP
+.B int mode
+File mode to use if the file needs be created.
+.TP
+.B int block_size
+Block size to be used when creating new database.  Zero stands for
+default value.  See the description of the
+.I block_size
+argument in
+.BR gdbm_open ,
+for details.
+.TP
+.B int lock_wait
+This field, together with the two fields described below, controls how
+to handle failed attempts to lock the file.  Its possible values are:
+.RS +7
+.TP
+.B GDBM_LOCKWAIT_NONE
+Return \fBNULL\fR immediately.  This is the default.
+.TP
+.B GDBM_LOCKWAIT_RETRY
+Sleep for the amount of time defined by the
+.B lock_interval
+field, and retry the attempt.  In case of failure, repeat until total
+time spent exceeds
+.BR lock_timeout .
+.TP
+.B GDBM_LOCKWAIT_SIGNAL
+Wait until locking succeeds or the timeout defined by
+.B lock_timeout
+expires, whichever happens first.  Signal delivery is used to catch
+timeout expiration, therefore this method is not advised for use in
+multi-threaded programs.
+.RE
+.IP
+.TP
+.B struct timespec lock_timeout
+Overall timeout for file locking operation.
+.TP
+.B struct timespec lock_interval
+Time interval between two successive locking attempts.  Used if
+.B lock_wait
+is set to
+.BR GDBM_LOCKWAIT_RETRY .
+.RE
+.IP
+A
+.B struct gdbm_open_spec
+variable can be initialized to default values by assigning it the
+.B GDBM_OPEN_SPEC_INITIALIZER
+value, or using the
+.B gdbm_open_spec_init
+function.  The latter is defined as:
+.IP
+.sp
+.nf
+.in +5
+.BI "void gdbm_open_spec_init (struct gdbm_open_spec *" spec ");"
+.in
+.fi
 .SS Calling convention
 .PP
 All \fBGDBM\fR functions take as their first parameter the
-\fIdatabase handle\fR (\fBGDBM_FILE\fR), returned from \fBgdbm_open\fR
-or \fBgdbm_fd_open\fR.
+\fIdatabase handle\fR (\fBGDBM_FILE\fR), returned from
+.BR gdbm_open ,
+.BR gdbm_fd_open ,
+or
+.BR gdbm_open_ext .
 .PP
 Any value stored in the \fBGDBM\fR database is described by
 \fIdatum\fR, an aggregate type defined as:
@@ -375,7 +493,7 @@ is needed to update the reader/writer count on the file.  This is done by:
 .SS Database lookups
 .TP
 .BI "int gdbm_exists (GDBM_FILE " dbf ", datum " key );
-If the \fIkey\fR is found within the database, the return value 
+If the \fIkey\fR is found within the database, the return value
 will be \fItrue\fR (\fB1\fR).  If nothing appropriate is found, \fIfalse\fR
 (\fB0\fR) is returned and \fBgdbm_errno\fR set to \fBGDBM_NO_ERROR\fR.
 .sp
@@ -386,7 +504,7 @@ On error, returns 0 and sets \fBgdbm_errno\fR.
 the key data.
 .sp
 If the \fIdptr\fR element of the return value is \fBNULL\fR, the
-\fBgdbm_errno\fR variable should be examined.  The value of 
+\fBgdbm_errno\fR variable should be examined.  The value of
 \fBGDBM_ITEM_NOT_FOUND\fR means no data was found for that \fIkey\fR.
 Other value means an error occurred.
 .sp
@@ -442,7 +560,7 @@ make sure that any collisions in the table do not leave some item
 the order in which the keys are ordered.  Therefore, these functions
 should not be used when iterating over all the keys in the database.
 For example, the following loop is wrong: it is possible that some keys
-will not be visited or will be visited twice if it is executed: 
+will not be visited or will be visited twice if it is executed:
 .sp
 .nf
 .in +5
@@ -463,7 +581,7 @@ while (key.dptr)
 \fIDbf\fR is the pointer returned by \fBgdbm_open\fR.  \fIKey\fR is the
 key data.  \fIContent\fR is the data to be associated with the \fIkey\fR.
 \fIFlag\fR can have one of the following values:
-.RS 4
+.RS +7
 .TP
 .B GDBM_INSERT
 Insert only, generate an error if key exists;
@@ -544,14 +662,14 @@ requested \fIformat\fR.  Allowed values for \fIformat\fR are:
 to create an ASCII dump file, and
 .BR GDBM_DUMP_FMT_BINARY ,
 to create a binary dump.
-
+.IP
 The value of \fIopen_flag\fR tells \fBgdbm_dump\fR what to do if
 \fIfilename\fR already exists.  If it is \fBGDBM_NEWDB\fR, the
 function will create a new output file, replacing it if it already
 exists.  If its value is \fBGDBM_WRCREAT\fR, the file will be created
 if it does not exist.  If it does exist, \fBgdbm_dump\fR will return
 error.
-
+.IP
 The file mode to use when creating the output file is defined by the
 \fImode\fR parameter.  Its meaning is the same as for
 .BR open (2).
@@ -569,18 +687,18 @@ will be stored in the memory location pointed to by \fIpdbf\fR.  If
 the dump file carries no information about the original database file
 name, the function will set \fBgdbm_errno\fR to \fBGDBM_NO_DBNAME\fR
 and return -1, indicating failure.
-
+.IP
 Otherwise, if \fIpdbf\fR points to an already open \fBGDBM_FILE\fR,
 the function will load data from \fIfilename\fR into that database.
-
+.IP
 The \fIflag\fR parameter controls the function behavior if a key
 from the dump file already exists in the database.  See the
 \fBgdbm_store\fR function for its possible values.
-
+.IP
 The \fImeta_mask\fR parameter can be used to disable restoring certain
 bits of file's meta-data from the information in the input dump file.
 It is a binary OR of zero or more of the following:
-.RS +4
+.RS +7
 .TP
 .B GDBM_META_MASK_MODE
 Do not restore file mode.
@@ -589,7 +707,7 @@ Do not restore file mode.
 Do not restore file owner.
 .RE
 .SS Other functions
-.TP  
+.TP
 .BI "int gdbm_reorganize (GDBM_FILE " dbf ");"
 If you have had a lot of deletions and would like to shrink the space
 used by the \fBGDBM\fR file, this routine will reorganize the
@@ -611,7 +729,7 @@ region where to store the return value.  In both cases, \fIsize\fR
 contains the actual size of the memory pointed to by \fIvalue\fR.
 .sp
 Possible values of \fIoption\fR are:
-.RS +4
+.RS +7
 .TP
 .B GDBM_SETCACHESIZE
 .TQ
@@ -620,11 +738,11 @@ Set the size of the internal bucket cache.  The \fIvalue\fR should
 point to a \fBsize_t\fR holding the desired cache size, or the
 constant \fBGDBM_CACHE_AUTO\fR, to select the best cache size
 automatically.
-
+.IP
 By default, a newly open database is configured to adapt the cache
 size to the number of index buckets in the database file.  This
 provides for the best performance.
-
+.IP
 Use this option if you wish to limit the memory usage at the expense
 of performance.  If you chose to do so, please bear in mind that cache
 becomes effective when its size is greater then 2/3 of the number of
@@ -645,7 +763,7 @@ opening the database, except that it will reflect the current state
 .B GDBM_FASTMODE
 Enable or disable the \fIfast writes mode\fR, similar to the
 \fBGDBM_FAST\fR option to \fBgdbm_open\fR.
-
+.IP
 This option is retained for compatibility with previous versions of
 \fBGDBM\fR.
 .TP
@@ -655,7 +773,7 @@ This option is retained for compatibility with previous versions of
 Turn on or off immediate disk synchronization after updates.  The
 \fIvalue\fR should point to an integer: 1 to turn synchronization on,
 and 0 to turn it off.
-
+.IP
 \fBNOTE\fR: setting this option entails severe performance degradation
 and does not necessarily ensure that the resulting database state is
 consistent, therefore we discourage its use.  For a discussion of how
@@ -676,7 +794,7 @@ set, this option causes all subsequent free blocks to be placed in the
 \fIglobal\fR pool, allowing (in theory) more file space to be reused
 more quickly.  The \fIvalue\fR should point to an integer: \fBTRUE\fR to
 turn central block pool on, and \fBFALSE\fR to turn it off.
-
+.IP
 The \fBGDBM_CENTFREE\fR alias is provided for compatibility with
 earlier versions.
 .TP
@@ -687,7 +805,7 @@ Set free block merging to either on or off.  The default is off, which
 is how previous versions of \fBGDBM\fR handled free blocks.  If set,
 this option causes adjacent free blocks to be merged.  This can become
 a CPU expensive process with time, though, especially if used in
-conjunction with \fBGDBM_CENTFREE\fR.  The \fIvalue\fR should point 
+conjunction with \fBGDBM_CENTFREE\fR.  The \fIvalue\fR should point
 to an integer: \fBTRUE\fR to turn free block merging on, and \fBFALSE\fR to
 turn it off.
 .TP
@@ -864,7 +982,7 @@ database.
 .TP
 .B GDBM_CANNOT_REPLACE
 Cannot replace existing item.  This error is set by the
-\fBgdbm_store\fR if the requested key value is found in the 
+\fBgdbm_store\fR if the requested key value is found in the
 database and the \fIflag\fR parameter is not \fBGDBM_REPLACE\fR.
 .TP
 .B GDBM_MALFORMED_DATA
@@ -872,7 +990,7 @@ Input data was malformed in some way.  When returned by
 \fBgdbm_load\fR, this means that the input file was not a valid
 \fBgdbm\fR dump file.  When returned by \fBgdbm_store\fR, this means
 that either \fIkey\fR or \fIcontent\fR parameter had its \fBdptr\fR
-field set to \fBNULL\fR. 
+field set to \fBNULL\fR.
 .sp
 The \fBGDBM_ILLEGAL_DATA\fR is an alias for this error code,
 maintained for backward compatibility.
@@ -1052,11 +1170,11 @@ The following interfaces are provided:
 .br
 .BI "int delete (datum " key );
 .br
-.BI "datum firstkey (void);"
+.B "datum firstkey (void);"
 .br
 .BI "datum nextkey (datum " key );
 .br
-.BI "int dbmclose (void);"
+.B "int dbmclose (void);"
 .SS NDBM Compatibility routines:
 In this mode, multiple databases can be opened.  Each database is
 identified by a handle of type \fBDBM *\fR.  As in the original
@@ -1110,7 +1228,6 @@ gcc \-o prog proc.c \-lgdbm \-lgdbm_compat
 .in
 .fi
 .\" .SH BUGS
-
 .SH "BUG REPORTS"
 Send bug reports to <bug\-gdbm@gnu.org>.
 .SH "SEE ALSO"
@@ -1121,45 +1238,52 @@ Send bug reports to <bug\-gdbm@gnu.org>.
 by Philip A. Nelson, Jason Downs and Sergey Poznyakoff;
 crash tolerance by Terence Kelly.
 .SH COPYRIGHT
-Copyright \(co 1990 - 2021 Free Software Foundation, Inc.
-
+Copyright \(co 1990 - 2025 Free Software Foundation, Inc.
+.PP
 GDBM is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 1, or (at your option)
 any later version.
-
+.PP
 GDBM is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
-
+.PP
 You should have received a copy of the GNU General Public License
 along with GDBM.  If not, see <http://gnu.org/licenses/gpl.html>
 .SH CONTACTS
 You may contact the original author by:
-.br
-   e-mail:  phil@cs.wwu.edu
-.br
-  us-mail:  Philip A. Nelson
+.RS +3
+e-mail:  phil@cs.wwu.edu
+.RE
+.RS +2
+us-mail:  Philip A. Nelson
+.RE
 .br
 Computer Science Department
 .br
 Western Washington University
 .br
 Bellingham, WA 98226
-
+.PP
 You may contact the current maintainers by:
-.br
-   e-mail:  downsj@downsj.com
+.RS +3
+e-mail:  downsj@downsj.com
+.RE
 .br
 and
-   e-mail:  gray@gnu.org
-
+.br
+.RS +3
+e-mail:  gray@gnu.org
+.RE
+.PP
 For questions and feedback regarding crash tolerance, you may contact
 Terence Kelly at:
 .br
-   e-mail:  tpkelly @ { acm.org, cs.princeton.edu, eecs.umich.edu }
-
+.RS +3
+e-mail:  tpkelly @ { acm.org, cs.princeton.edu, eecs.umich.edu }
+.RE
 .\" Local variables:
 .\" eval: (add-hook 'write-file-hooks 'time-stamp)
 .\" time-stamp-start: ".TH GDBM 3 \""

@@ -87,8 +87,9 @@ off_t _gdbm_mapped_lseek	(GDBM_FILE, off_t, int);
 int _gdbm_mapped_sync	(GDBM_FILE);
 
 /* From lock.c */
-void _gdbm_unlock_file	(GDBM_FILE);
-int _gdbm_lock_file	(GDBM_FILE);
+void _gdbm_unlock_file	 (GDBM_FILE);
+int _gdbm_lock_file	 (GDBM_FILE, int);
+int _gdbm_lock_file_wait (GDBM_FILE, struct gdbm_open_spec const *);
 
 /* From fullio.c */
 int _gdbm_full_read (GDBM_FILE, void *, size_t);

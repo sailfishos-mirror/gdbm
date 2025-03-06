@@ -32,4 +32,5 @@ testsuite.dir
 *.bak
 site.exp
 t_dumpload
+t_lockwait
 t_wordwrap
