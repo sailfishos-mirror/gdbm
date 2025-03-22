@@ -611,7 +611,7 @@ by @var{flags}.  This is the default.
 @defvr {lock_wait} GDBM_LOCKWAIT_RETRY
 If the database is locked, sleep for the amount of time defined by the
 @code{lock_interval} field, and retry the attempt.  In case of failure,
-repeat until total time spent exceeds
+repeat until the lock is acquired, or total time spent exceeds
 @code{lock_timeout} (see below).
 @end defvr
 
@@ -636,8 +636,8 @@ Specifies the timeout for file locking operation, in case
 @end deftypecv
 
 @deftypecv {member} gdbm_open_spec struct timespec lock_interval
-Specifies the time interval between two successive locking attempts,
-of @code{lock_wait} is @code{GDBM_LOCKWAIT_RETRY}.
+Specifies the time interval between two successive locking attempts.  Used
+if @code{lock_wait} is @code{GDBM_LOCKWAIT_RETRY}.
 
 @xref{Locking}.
 @end deftypecv

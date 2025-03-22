@@ -307,7 +307,6 @@ flush_line (WORDWRAP_FILE wf, size_t size)
 
       if (n < len)
 	{
-	  //FIXME: this breaks column and ws tracking
 	  abort ();
 	}
     }
@@ -386,7 +385,7 @@ wordwrap_set_left_margin (WORDWRAP_FILE wf, unsigned left)
   if (left < wf->offset)
     {
       if (!bol)
-	flush_line (wf, wf->offset);//FIXME: remove trailing ws
+	flush_line (wf, wf->offset); /* FIXME: remove trailing ws */
     }
   else
     {

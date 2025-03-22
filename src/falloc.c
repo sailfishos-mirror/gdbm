@@ -248,7 +248,7 @@ pop_avail_block (GDBM_FILE dbf)
   dbf->avail->next_block = new_blk->next_block;
 
   /* We changed the header. */
-  //FIXME: or avail block, when it is separate
+  /* FIXME: or avail block, when it is separate */
   dbf->header_changed = TRUE;
 
   /* Free the previous avail block.   It is possible that the header table

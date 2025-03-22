@@ -1,5 +1,5 @@
 # This file is part of GNU Pies.
-# Copyright (C) 2020-2021 Sergey Poznyakoff
+# Copyright (C) 2020-2024 Sergey Poznyakoff
 #
 # GNU Pies is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -282,10 +282,12 @@ package Gendocs::Dvi;
 use strict;
 use warnings;
 use base 'Gendocs';
+use File::Temp qw(tempdir);
 
 sub new {
     my $class = shift;
     my $self = $class->SUPER::new(@_);
+    $ENV{TEXI2DVI_BUILD_DIRECTORY} = tempdir(CLEANUP => 1);
     $self->{texi2dvi} = $ENV{'TEXI2DVI'} || 'texi2dvi --build=tidy -t @finalout';
     return $self;
 }

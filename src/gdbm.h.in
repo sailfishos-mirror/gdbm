@@ -137,10 +137,11 @@ struct gdbm_open_spec
   int mode;            /* File mode in case it will be created. */
   int block_size;      /* Block size to use when creating new file.  0 stands
 			  for default. */
-  int lock_wait;       /* Method for waiting for database to become available.
-			  GDBM_LOCKWAIT_NONE means return immediately, if the
-			  database cannot be locked.  Otherwise, block until
-			  the file is locked or timeout expires. */
+  int lock_wait;       /* Whether and how to wait for database lock to
+			  succeed.  GDBM_LOCKWAIT_NONE means return
+			  immediately, if the database cannot be locked.
+			  Otherwise, block until the file is locked or
+			  timeout expires. */
   struct timespec lock_timeout;  /* Locking timeout. */
   struct timespec lock_interval; /* For GDBM_LOCKWAIT_RETRY, interval to
 				    sleep between two successive locking

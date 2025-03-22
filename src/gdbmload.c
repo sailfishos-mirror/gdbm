@@ -603,7 +603,7 @@ gdbm_load_bdb_dump (struct dump_file *file, GDBM_FILE dbf, int replace)
 	}
       i = !i;
     }
-  //FIXME: Read "DATA=END"
+  /* FIXME: Read "DATA=END" */
   free (xd[0].dptr);
   free (xd[1].dptr);
   if (rc == 0 && i)

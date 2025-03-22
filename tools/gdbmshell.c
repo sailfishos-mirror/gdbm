@@ -313,7 +313,7 @@ avail_list_print (avail_block *avblk, off_t n, void *data)
   PAGERFILE *pager = data;
 
   pager_putc (pager, '\n');
-  if (n == 0)//FIXME
+  if (n == 0)
     pager_writez (pager, _("header block"));
   else
     pager_printf (pager, _("block = %lu"), (unsigned long) n);

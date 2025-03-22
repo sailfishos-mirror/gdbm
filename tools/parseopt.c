@@ -109,7 +109,7 @@ sort_all_options (void)
 
   /* Ensure sane start of options.  This is necessary because optcmp backs up
      until it finds an element with cleared PARSEOPT_ALIAS flag bit. */
-  option_tab[0].opt_flags &= PARSEOPT_ALIAS;
+  option_tab[0].opt_flags &= ~PARSEOPT_ALIAS;
   for (start = 0; start < option_count; )
     {
       if (IS_GROUP_HEADER (&option_tab[start]))
@@ -512,7 +512,7 @@ parseopt_print_help (void)
     }
 #endif
   if (parseopt_help_hook)
-    parseopt_help_hook (stdout);//FIXME
+    parseopt_help_hook (stdout);
 
   wordwrap_set_left_margin (wf, 0);
   wordwrap_set_right_margin (wf, rmargin);
