@@ -16,6 +16,7 @@
 
 #include <stdlib.h>
 #include <stdarg.h>
+#include <sys/types.h>
 #include "gettext.h"
 #ifdef HAVE_LOCALE_H
 # include <locale.h>
