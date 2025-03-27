@@ -291,7 +291,7 @@ _gdbm_lockwait_retry (GDBM_FILE dbf, struct timespec const *ts,
       if (timespec_cmp (&ttw, iv) < 0)
 	break;
       timespec_sub (&ttw, iv);
-      if (clock_nanosleep (CLOCK_REALTIME, 0, iv, &r))
+      if (nanosleep (iv, &r))
 	{
 	  if (errno == EINTR)
 	    timespec_add (&ttw, &r);
