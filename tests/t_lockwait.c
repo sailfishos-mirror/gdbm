@@ -323,9 +323,6 @@ runtest_signal (struct timespec *ts)
       struct sigaction act;
       struct timeval now;
 
-      gettimeofday (&now, NULL);
-      start = tv_to_ms (&now);
-
       if (pipe (sig_fd))
 	{
 	  perror ("pipe");
@@ -341,6 +338,8 @@ runtest_signal (struct timespec *ts)
 	  return -1;
 	}
       alarm (ts_to_ms (&ts[1]) / MILLI);
+      gettimeofday (&now, NULL);
+      start = tv_to_ms (&now);
     }
 
   op.lock_wait = GDBM_LOCKWAIT_SIGNAL;
