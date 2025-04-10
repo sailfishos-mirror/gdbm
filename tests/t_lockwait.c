@@ -170,6 +170,7 @@ static void
 sighan (int sig)
 {
   write (sig_fd[1], &sig, sizeof (sig));
+  close (sig_fd[1]);
 }
 
 static int runtest_retry (struct timespec *ts);
@@ -364,7 +365,8 @@ runtest_signal (struct timespec *ts)
 
       pfd.fd = sig_fd[0];
       pfd.events = POLLIN;
-      switch (poll (&pfd, 1, ts_to_ms (&ts[1]) - tv_to_ms (&now) + start)) {
+      switch (poll (&pfd, 1,
+		    ts_to_ms (&ts[1]) - tv_to_ms (&now) + start + MILLI)) {
       case 1:
 	break;
 
