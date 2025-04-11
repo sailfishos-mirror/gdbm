@@ -322,7 +322,6 @@ runtest_signal (struct timespec *ts)
   if (!(ts[1].tv_sec == 0 && ts[1].tv_nsec == 0))
     {
       struct sigaction act;
-      struct timeval now;
 
       if (pipe (sig_fd))
 	{
@@ -338,9 +337,6 @@ runtest_signal (struct timespec *ts)
 	  fprintf (stderr, "%s: sigaction: %s", progname, strerror (errno));
 	  return -1;
 	}
-      alarm (ts_to_ms (&ts[1]) / MILLI);
-      gettimeofday (&now, NULL);
-      start = tv_to_ms (&now);
     }
 
   op.lock_wait = GDBM_LOCKWAIT_SIGNAL;
@@ -354,42 +350,58 @@ runtest_signal (struct timespec *ts)
     }
   gdbm_close (dbf);
 
-  if (start > 0)
+  if (!(ts[1].tv_sec == 0 && ts[1].tv_nsec == 0))
     {
       struct pollfd pfd;
       struct timeval now;
-      int sig;
+      int n, t, sig;
 
-    restart:
+      alarm (ts_to_ms (&ts[1]) / MILLI);
       gettimeofday (&now, NULL);
+      start = tv_to_ms (&now);
 
       pfd.fd = sig_fd[0];
       pfd.events = POLLIN;
-      switch (poll (&pfd, 1,
-		    ts_to_ms (&ts[1]) - tv_to_ms (&now) + start + MILLI)) {
-      case 1:
-	break;
 
-      case 0:
-	fprintf (stderr, "%s: failed waiting for alarm\n", progname);
-	return 1;
-
-      default:
-	if (errno == EINTR) goto restart;
-	fprintf (stderr, "%s: poll: %s\n", progname, strerror (errno));
-	return 1;
-      }
-
-      if (read (sig_fd[0], &sig, sizeof (sig)) != sizeof (sig))
+      do
 	{
-	  fprintf (stderr, "%s: read: %s\n", progname, strerror (errno));
-	  return 1;
+	  gettimeofday (&now, NULL);
+	  t = ts_to_ms (&ts[1]) - tv_to_ms (&now) + start + MILLI;
+	  if (t < 0)
+	    {
+	      n = 0;
+	      break;
+	    }
 	}
-      close (sig_fd[0]);
-      if (sig != SIGALRM)
+      while ((n = poll (&pfd, 1, t)) == -1 && errno == EINTR);
+
+      switch (n)
 	{
-	  fprintf (stderr, "%s: unexpected data read\n", progname);
+	case 1:
+	  if (read (sig_fd[0], &sig, sizeof (sig)) != sizeof (sig))
+	    {
+	      fprintf (stderr, "%s: read: %s\n", progname, strerror (errno));
+	      return 1;
+	    }
+	  close (sig_fd[0]);
+	  if (sig != SIGALRM)
+	    {
+	      fprintf (stderr, "%s: unexpected data read\n", progname);
+	      return 1;
+	    }
+	  break;
+
+	case 0:
+	  fprintf (stderr, "%s: failed waiting for alarm\n", progname);
 	  return 1;
+
+	default:
+	  if (errno != EINTR)
+	    {
+	      fprintf (stderr, "%s: poll: %s\n",
+		       progname, strerror (errno));
+	      return 1;
+	    }
 	}
     }
 
