@@ -47,7 +47,7 @@ _gdbm_full_read (GDBM_FILE dbf, void *buffer, size_t size)
   return 0;
 }
 
-/* Write exactly SIZE bytes of data from BUFFER tp DBF.  Return 0 on
+/* Write exactly SIZE bytes of data from BUFFER to DBF.  Return 0 on
    success, and -1 (setting gdbm_errno to GDBM_FILE_READ_ERROR) on error. */
 int
 _gdbm_full_write (GDBM_FILE dbf, void *buffer, size_t size)

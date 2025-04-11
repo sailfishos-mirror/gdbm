@@ -30,7 +30,7 @@ tools/gdbmtool.c
 tools/gram.y
 tools/input-file.c
 tools/lex.l
+tools/pagerfile.c
 tools/parseopt.c
 tools/util.c
 tools/var.c
-

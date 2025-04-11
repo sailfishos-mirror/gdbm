@@ -39,7 +39,7 @@ gdbm_close (GDBM_FILE dbf)
 
       _gdbmsync_done (dbf);
       
-      /* Close the file and free all malloced memory. */
+      /* Close the file and free all malloc'ed memory. */
 #if HAVE_MMAP
       _gdbm_mapped_unmap (dbf);
 #endif

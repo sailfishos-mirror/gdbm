@@ -284,7 +284,7 @@ push_avail_block (GDBM_FILE dbf)
   avail_elem  new_loc;
   int rc;
 
-  /* Caclulate the size of the split block. */
+  /* Calculate the size of the split block. */
   av_size = ( (dbf->avail->size * sizeof (avail_elem)) >> 1)
             + sizeof (avail_block);
 
