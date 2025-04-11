@@ -30,6 +30,40 @@
 #define ISSET(c) (c != UNSET)
 #define DEFAULT_RIGHT_MARGIN 80
 
+struct position
+{
+  unsigned off;
+  unsigned col;
+};
+
+#define POSITION_INITIALIZER { 0, 0 }
+
+static inline void
+position_init (struct position *pos, unsigned n)
+{
+  pos->off = pos->col = n;
+}
+
+static inline void
+position_incr (struct position *pos, int nbytes)
+{
+  pos->off += nbytes;
+  pos->col++;
+}
+
+static inline void
+position_add (struct position *a, struct position *b)
+{
+  a->off += b->off;
+  a->col += b->col;
+}
+
+static inline int
+position_eq (struct position *a, struct position *b)
+{
+  return a->col == b->col;
+}
+
 struct wordwrap_file
 {
   int fd;                /* Output file descriptor. */
@@ -39,12 +73,12 @@ struct wordwrap_file
   unsigned right_margin; /* Right margin. */
   char *buffer;          /* Output buffer. */
   size_t bufsize;        /* Size of buffer in bytes. */
-  unsigned offset;       /* Offset of the writing point in the buffer */
-  unsigned column;       /* Number of screen column, i.e. the (multibyte)
-			    character corresponding to the offset. */
-  unsigned last_ws;      /* Offset of the beginning of the last whitespace
-			    sequence written to the buffer. */
-  unsigned ws_run;       /* Number of characters in the whitespace sequence. */
+  struct position cur;   /* Current position in buffer. */
+  struct position last_ws; /* Position of the beginning of the last whitespace
+			      sequence written to the buffer. */
+  struct position ws_run; /* Number of bytes/columns in the last
+			     whitespace sequence. */
+
   unsigned word_start;   /* Start of a sequence that should be treated as a
 			    single word. */
   unsigned next_left_margin; /* Left margin to be set after next flush. */
@@ -59,12 +93,14 @@ struct wordwrap_file
  * Reset the file for the next input line.
  */
 static void
-wordwrap_line_init (WORDWRAP_FILE wf)
+wordwrap_line_init (WORDWRAP_FILE wf, int clrws)
 {
-  wf->offset = wf->column = wf->left_margin;
-  wf->last_ws = UNSET;
-  wf->ws_run = 0;
+  position_init (&wf->cur, wf->left_margin);
   wf->unibyte = 0;
+  if (clrws)
+    {
+      position_init (&wf->ws_run, 0);
+    }
 }
 
 /*
@@ -129,7 +165,6 @@ wordwrap_open (int fd, ssize_t (*writer) (void *, const char *, size_t),
   wf->writer = writer;
   wf->stream = data;
 
-  wf->last_ws = UNSET;
   wf->word_start = UNSET;
   wf->next_left_margin = UNSET;
 
@@ -168,7 +203,7 @@ wordwrap_close (WORDWRAP_FILE wf)
 int
 wordwrap_at_bol (WORDWRAP_FILE wf)
 {
-  return wf->column == wf->left_margin;
+  return wf->cur.col == wf->left_margin;
 }
 
 /*
@@ -177,7 +212,7 @@ wordwrap_at_bol (WORDWRAP_FILE wf)
 int
 wordwrap_at_eol (WORDWRAP_FILE wf)
 {
-  return wf->column == wf->right_margin;
+  return wf->cur.col == wf->right_margin;
 }
 
 /*
@@ -252,36 +287,67 @@ wsprefix (WORDWRAP_FILE wf, char const *str, size_t size)
 }
 
 /*
- * Rescan N bytes from the current buffer from the current offset.
+ * Rescan SIZE bytes from the current buffer from the current offset.
  * Update offset, column, and whitespace segment counters.
  */
 static void
-wordwrap_rescan (WORDWRAP_FILE wf, size_t n)
+wordwrap_rescan (WORDWRAP_FILE wf, size_t size)
 {
   mbstate_t mbs;
   wchar_t wc;
 
-  wordwrap_line_init (wf);
+  wordwrap_line_init (wf, 0);
 
   memset (&mbs, 0, sizeof (mbs));
-  while (wf->offset < n)
+  while (wf->cur.off < size)
     {
-      size_t n = safe_mbrtowc (wf, &wc, &wf->buffer[wf->offset], &mbs);
+      size_t n = safe_mbrtowc (wf, &wc, &wf->buffer[wf->cur.off], &mbs);
 
       if (iswblank (wc))
 	{
-	  if (ISSET (wf->last_ws) && wf->last_ws + wf->ws_run == wf->offset)
-	    wf->ws_run++;
-	  else
+	  if (!(wf->ws_run.col > 0 &&
+		wf->last_ws.col + wf->ws_run.col == wf->cur.col))
 	    {
-	      wf->last_ws = wf->offset;
-	      wf->ws_run = 1;
+	      wf->last_ws = wf->cur;
+	      position_init (&wf->ws_run, 0);
 	    }
+	  position_incr (&wf->ws_run, n);
 	}
 
-      wf->offset += n;
-      wf->column++;
+      position_incr(&wf->cur, n);
     }
+}
+
+static struct position
+wordwrap_last_ws (WORDWRAP_FILE wf, size_t size, struct position *last_ws)
+{
+  mbstate_t mbs;
+  wchar_t wc;
+  struct position cur = POSITION_INITIALIZER;
+  struct position ws_run = POSITION_INITIALIZER;
+
+  memset (&mbs, 0, sizeof (mbs));
+  last_ws->off = last_ws->col = UNSET;
+  while (cur.off < size)
+    {
+      size_t n = safe_mbrtowc (wf, &wc, &wf->buffer[cur.off], &mbs);
+      if (iswblank (wc))
+	{
+	  if (!(ws_run.col > 0 && last_ws->col + ws_run.col == cur.col))
+	    {
+	      *last_ws = cur;
+	      position_init (&ws_run, 0);
+	    }
+	  position_incr (&ws_run, n);
+	}
+      else
+	{
+	  position_init (last_ws, UNSET);
+	  position_init (&ws_run, 0);
+	}
+      position_incr (&cur, n);
+    }
+  return cur;
 }
 
 /*
@@ -292,21 +358,30 @@ static int
 flush_line (WORDWRAP_FILE wf, size_t size)
 {
   ssize_t n;
-  size_t len;
+  struct position pos, last_ws;
 
-  if (ISSET (wf->last_ws) && size == wf->last_ws + wf->ws_run)
-    len = wf->last_ws;
-  else
-    len = size;
-
-  if (len >= wf->left_margin && wf->offset > wf->left_margin)
+  if (wf->ws_run.off > 0 && size == wf->last_ws.off + wf->ws_run.off)
     {
-      n = full_write (wf, len);
+      pos = last_ws = wf->last_ws;
+    }
+  else
+    {
+      pos = wordwrap_last_ws (wf, size, &last_ws);
+    }
+
+  if ((pos.col >= wf->left_margin && wf->cur.col > wf->left_margin) ||
+      size == wf->cur.off)
+    {
+      if (last_ws.off != UNSET)
+	pos = last_ws;
+
+      n = full_write (wf, pos.off);
       if (n == -1)
 	return -1;
 
-      if (n < len)
+      if (n < pos.off)
 	{
+	  //FIXME
 	  abort ();
 	}
     }
@@ -319,7 +394,7 @@ flush_line (WORDWRAP_FILE wf, size_t size)
       wf->next_left_margin = UNSET;
     }
 
-  n = wf->offset - size;
+  n = wf->cur.off - size;
   if (n > 0)
     {
       size_t wsn;
@@ -330,14 +405,21 @@ flush_line (WORDWRAP_FILE wf, size_t size)
       n -= wsn;
 
       if (n)
-	memmove (wf->buffer + wf->left_margin, wf->buffer + size, n);
+	{
+	  memmove (wf->buffer + wf->left_margin, wf->buffer + size, n);
+	  wf->cur.off = wf->left_margin + n;
+	  position_init (&wf->ws_run, 0);
+	}
     }
 
   if (wf->indent)
     {
       memset (wf->buffer, ' ', wf->left_margin);
       wf->indent = 0;
+      position_init (&wf->last_ws, 0);
+      position_init (&wf->ws_run, wf->left_margin);
     }
+
   wordwrap_rescan (wf, wf->left_margin + n);
 
   return 0;
@@ -349,8 +431,8 @@ flush_line (WORDWRAP_FILE wf, size_t size)
 int
 wordwrap_flush (WORDWRAP_FILE wf)
 {
-  if (wf->offset > wf->left_margin)
-    return flush_line (wf, wf->offset);
+  if (wf->cur.col > wf->left_margin)
+    return flush_line (wf, wf->cur.off);
   return 0;
 }
 
@@ -382,18 +464,29 @@ wordwrap_set_left_margin (WORDWRAP_FILE wf, unsigned left)
   bol = wordwrap_at_bol (wf);
   wf->left_margin = left;
   wf->indent = 1;
-  if (left < wf->offset)
+  if (left < wf->cur.col ||
+      (left == wf->cur.col && (wf->ws_run.col == 0 ||
+			      wf->cur.col > wf->last_ws.col + wf->ws_run.col)))
     {
       if (!bol)
-	flush_line (wf, wf->offset); /* FIXME: remove trailing ws */
+	flush_line (wf, wf->cur.off);//FIXME: remove trailing ws
+      else
+	wordwrap_line_init (wf, 1);
     }
-  else
+  else if (left > wf->cur.col)
     {
-      if (left > wf->offset)
-	memset (wf->buffer + wf->offset, ' ', wf->left_margin - wf->offset);
+      size_t n = wf->left_margin - wf->cur.col;
+      if (n > 0)
+	{
+	  memset (wf->buffer + wf->cur.off, ' ', n);
+	  wf->last_ws = wf->cur;
+	  position_init (&wf->ws_run, n);
+	  position_add (&wf->cur, &wf->ws_run);
+	  wf->unibyte = 0;
+	}
+      else
+	wordwrap_line_init (wf, 1);
     }
-  wordwrap_line_init (wf);
-
   return 0;
 }
 
@@ -437,7 +530,7 @@ wordwrap_set_right_margin (WORDWRAP_FILE wf, unsigned right)
       char *p;
       size_t size;
 
-      if (right < wf->offset)
+      if (right < wf->cur.off)
 	{
 	  if (wordwrap_flush (wf))
 	    return -1;
@@ -470,7 +563,7 @@ wordwrap_set_right_margin (WORDWRAP_FILE wf, unsigned right)
 void
 wordwrap_word_start (WORDWRAP_FILE wf)
 {
-  wf->word_start = wf->offset;
+  wf->word_start = wf->cur.off;
 }
 
 /*
@@ -497,7 +590,7 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
     {
       size_t n = safe_mbrtowc (wf, &wc, &str[i], &mbs);
 
-      if (wf->column + 1 == wf->right_margin || wc == '\n')
+      if (wf->cur.col + 1 == wf->right_margin || wc == '\n')
 	{
 	  size_t len;
 
@@ -506,10 +599,10 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
 	      len = wf->word_start;
 	      wf->word_start = UNSET;
 	    }
-	  else if (!iswspace (wc) && ISSET (wf->last_ws))
-	    len = wf->last_ws;
+	  else if (!iswspace (wc) && wf->ws_run.off > 0 && wf->last_ws.off > 0)
+	    len = wf->last_ws.off;
 	  else
-	    len = wf->offset;
+	    len = wf->cur.off;
 
 	  flush_line (wf, len);
 	  if (wc == '\n')
@@ -521,26 +614,24 @@ wordwrap_write (WORDWRAP_FILE wf, char const *str, size_t len)
 
       if (iswblank (wc))
 	{
-	  if (wf->offset == wf->left_margin)
+	  if (wf->cur.col == wf->left_margin)
 	    {
 	      /* Skip leading whitespace */
 	      i += n;
 	      continue;
 	    }
-	  else if (ISSET (wf->last_ws) && wf->last_ws + wf->ws_run == wf->offset)
-	    wf->ws_run++;
-	  else
+	  else if (!(wf->ws_run.col > 0 &&
+		     wf->last_ws.col + wf->ws_run.col == wf->cur.col))
 	    {
-	      wf->last_ws = wf->offset;
-	      wf->ws_run = 1;
+	      wf->last_ws = wf->cur;
+	      position_init (&wf->ws_run, 0);
 	    }
+	  position_incr (&wf->ws_run, n);
 	}
 
-      memcpy (wf->buffer + wf->offset, str + i, n);
+      memcpy (wf->buffer + wf->cur.off, str + i, n);
 
-      wf->offset += n;
-      wf->column++;
-
+      position_incr (&wf->cur, n);
       i += n;
     }
   return 0;
@@ -572,7 +663,10 @@ wordwrap_putc (WORDWRAP_FILE wf, int c)
 int
 wordwrap_para (WORDWRAP_FILE wf)
 {
-  return wordwrap_write (wf, "\n\n", 2);
+  if (wordwrap_at_bol (wf))
+    return wordwrap_write (wf, "\n", 1);
+  else
+    return wordwrap_write (wf, "\n\n", 2);
 }
 
 /*
