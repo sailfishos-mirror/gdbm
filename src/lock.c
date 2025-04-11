@@ -73,13 +73,8 @@ try_lock_flock (GDBM_FILE dbf, int nb)
     {
       return TRY_LOCK_OK;
     }
-  else if (errno == EWOULDBLOCK)
+  else if (errno == EWOULDBLOCK || errno == EINTR)
     {
-      return TRY_LOCK_FAIL;
-    }
-  else if (errno == EINTR)
-    {
-      errno = ETIME;
       return TRY_LOCK_FAIL;
     }
 #endif
@@ -116,7 +111,6 @@ try_lock_lockf (GDBM_FILE dbf, int nb)
       switch (errno)
 	{
 	case EINTR:
-	  errno = ETIME;
 	case EACCES:
 	case EAGAIN:
 	case EDEADLK:
@@ -162,7 +156,6 @@ try_lock_fcntl (GDBM_FILE dbf, int nb)
   switch (errno)
     {
     case EINTR:
-      errno = ETIME;
     case EACCES:
     case EAGAIN:
     case EDEADLK:
