@@ -96,7 +96,7 @@ dnl Internationalization macros.
 AM_GNU_GETTEXT([external], [need-ngettext])
 AM_GNU_GETTEXT_REQUIRE_VERSION([0.19])
 
-AC_CHECK_HEADERS([sys/file.h string.h locale.h getopt.h])
+AC_CHECK_HEADERS([sys/file.h string.h strings.h locale.h getopt.h])
 
 AC_CHECK_FUNCS([ftruncate flock lockf fsync setlocale getopt_long getline \
  timer_settime])
