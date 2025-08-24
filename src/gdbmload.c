@@ -35,7 +35,7 @@ struct dump_file
   char *linebuf;
   size_t lbsize;
   size_t lblevel;
-  
+
   char *buffer;
   size_t bufsize;
   size_t buflevel;
@@ -77,7 +77,7 @@ static int
 get_dump_line (struct dump_file *file, size_t *nread)
 {
   char buf[80];
-  
+
   if (file->lblevel == 0)
     {
       while (fgets (buf, sizeof buf, file->fp))
@@ -89,19 +89,19 @@ get_dump_line (struct dump_file *file, size_t *nread)
 	      file->line++;
 	      --n;
 	    }
-	  
+
 	  if (n + 1 + file->lblevel > file->lbsize)
 	    {
 	      size_t s = ((file->lblevel + n + _GDBM_MAX_DUMP_LINE_LEN)
 			  / _GDBM_MAX_DUMP_LINE_LEN)
-		          * _GDBM_MAX_DUMP_LINE_LEN;
+			  * _GDBM_MAX_DUMP_LINE_LEN;
 	      char *newp = realloc (file->linebuf, s);
 	      if (!newp)
 		return GDBM_MALLOC_ERROR;
 	      file->linebuf = newp;
 	      file->lbsize = s;
 	    }
-	  
+
 	  memcpy (file->linebuf + file->lblevel, buf, n);
 	  file->lblevel += n;
 	  if (buf[n])
@@ -126,8 +126,14 @@ get_data (struct dump_file *file)
 
   file->buflevel = 0;
   file->parmc = 0;
-  
-  while ((rc = get_dump_line (file, &n)) == GDBM_NO_ERROR)
+
+  while ((rc = get_dump_line (file, &n)) == GDBM_NO_ERROR &&
+	 file->linebuf[0] == '#')
+    ;
+  if (rc != GDBM_NO_ERROR)
+    return rc;
+
+  do
     {
       if (file->linebuf[0] == '#')
 	return GDBM_NO_ERROR;
@@ -135,7 +141,7 @@ get_data (struct dump_file *file)
 	{
 	  size_t s = ((file->buflevel + n + _GDBM_MAX_DUMP_LINE_LEN - 1)
 		      / _GDBM_MAX_DUMP_LINE_LEN)
-	              * _GDBM_MAX_DUMP_LINE_LEN;
+		      * _GDBM_MAX_DUMP_LINE_LEN;
 	  char *newp = realloc (file->buffer, s);
 	  if (!newp)
 	    return GDBM_MALLOC_ERROR;
@@ -146,6 +152,8 @@ get_data (struct dump_file *file)
       file->buflevel += n;
       file->lblevel = 0;
     }
+  while ((rc = get_dump_line (file, &n)) == GDBM_NO_ERROR);
+
   if (rc == GDBM_FILE_EOF && file->buflevel > 0)
     rc = GDBM_NO_ERROR;
   return rc;
@@ -156,6 +164,11 @@ get_parms (struct dump_file *file)
 {
   size_t n;
   int rc;
+  static char len_pfx[] = "len=";
+  static size_t len_pfx_len = sizeof (len_pfx) - 1;
+  static char count_pfx[] = "count=";
+  static size_t count_pfx_len = sizeof (count_pfx) - 1;
+  int len_seen = 0;
 
   file->buflevel = 0;
   file->parmc = 0;
@@ -165,23 +178,26 @@ get_parms (struct dump_file *file)
 
       p = file->linebuf;
       if (*p != '#')
-	return 0;
+	break;
       if (*++p != ':')
 	{
 	  file->lblevel = 0;
-	  continue;
+	  if (file->parmc)
+	    break;
+	  else
+	    continue;
 	}
       if (--n == 0)
 	{
 	  file->lblevel = 0;
 	  continue;
 	}
-      
+
       if (n + 1 + file->buflevel > file->bufsize)
 	{
 	  size_t s = ((file->buflevel + n + _GDBM_MAX_DUMP_LINE_LEN)
 		      / _GDBM_MAX_DUMP_LINE_LEN)
-	              * _GDBM_MAX_DUMP_LINE_LEN;
+		      * _GDBM_MAX_DUMP_LINE_LEN;
 	  char *newp = realloc (file->buffer, s);
 	  if (!newp)
 	    return GDBM_MALLOC_ERROR;
@@ -196,9 +212,52 @@ get_parms (struct dump_file *file)
 	    p++;
 	  if (*p)
 	    {
+	      /*
+	       * Version 1.1 of ASCII dumps (produced by gdbm <= 1.26),
+	       * had no provisions for zero-length data, so that the
+	       * parameter "#:len=0" was followed immediately by next
+	       * parameter block.  Three cases can be distinguished:
+	       *
+	       *   1. Zero-length key
+	       *         #:len=0
+	       *         #:len=N
+	       *         [base64]
+	       *   2. Zero-length data:
+	       *         #:len=N
+	       *         #:len=0
+	       *         #:len=M
+	       *         ....
+	       *   3. Zero length data at the end of the file:
+	       *         #:len=N
+	       *         #:len=0
+	       *         #:count=M
+	       *
+	       * Additionally, version 1.18 didn't output "count" parameter
+	       * in the last case.
+	       *
+	       * The following conditional handles these cases:
+	       */
+	      if (strncmp (p, len_pfx, len_pfx_len) == 0)
+		{
+		  if (len_seen)
+		    {
+		      if (p > file->linebuf + 2)
+			{
+			  size_t len = strlen (p);
+			  memmove (file->linebuf + 2, p, len + 1);
+			  file->lblevel = len + 2;
+			}
+		      goto end;
+		    }
+		  else
+		    len_seen = 1;
+		}
+	      else if (len_seen && strncmp (p, count_pfx, count_pfx_len) == 0)
+		goto end;
+
 	      while (*p && *p != '=')
 		file->buffer[file->buflevel++] = *p++;
-	      
+
 	      if (*p == '=')
 		{
 		  file->buffer[file->buflevel++] = *p++;
@@ -227,22 +286,22 @@ get_parms (struct dump_file *file)
 	}
       file->lblevel = 0;
     }
-
+ end:
   if (rc == GDBM_FILE_EOF && file->buflevel > 0)
     rc = GDBM_NO_ERROR;
   if (file->buffer)
     file->buffer[file->buflevel] = 0;
-  
+
   return rc;
 }
 
 static int
-get_len (const char *param, size_t *plen)
+get_num (const char *param, const char *name, size_t *retval)
 {
   unsigned long n;
-  const char *p = getparm (param, "len");
+  const char *p = getparm (param, name);
   char *end;
-  
+
   if (!p)
     return GDBM_ITEM_NOT_FOUND;
 
@@ -250,44 +309,54 @@ get_len (const char *param, size_t *plen)
   n = strtoul (p, &end, 10);
   if (*end == 0 && errno == 0)
     {
-      *plen = n;
+      *retval = n;
       return 0;
     }
 
   return GDBM_MALFORMED_DATA;
 }
 
+static inline int
+get_len (const char *param, size_t *plen)
+{
+  return get_num (param, "len", plen);
+}
+
 static int
-read_record (struct dump_file *file, char *param, int n, datum *dat)
+read_record (struct dump_file *file, int n, datum *dat)
 {
   int rc;
   size_t len, consumed_size, decoded_size;
 
-  if (!param)
-    {
-      rc = get_parms (file);
-      if (rc)
-	return rc;
-      if (file->parmc == 0)
-	return GDBM_ITEM_NOT_FOUND;
-      param = file->buffer;
-    }
-  rc = get_len (param, &len);
+  rc = get_parms (file);
+  if (rc)
+    return rc;
+  if (file->parmc == 0)
+    return GDBM_ITEM_NOT_FOUND;
+
+  rc = get_len (file->buffer, &len);
   if (rc)
     return rc;
   dat->dsize = len; /* FIXME: data type mismatch */
-  rc = get_data (file);
-  if (rc)
-    return rc;
+  if (len > 0)
+    {
+      rc = get_data (file);
+      if (rc)
+	return rc;
 
-  rc = _gdbm_base64_decode ((unsigned char *)file->buffer, file->buflevel,
-			    &file->data[n].buffer, &file->data[n].size,
-			    &consumed_size, &decoded_size);
-  if (rc)
-    return rc;
-  if (consumed_size != file->buflevel || decoded_size != len)
-    return GDBM_MALFORMED_DATA;
-  dat->dptr = (void*) file->data[n].buffer;
+      rc = _gdbm_base64_decode ((unsigned char *)file->buffer, file->buflevel,
+				&file->data[n].buffer, &file->data[n].size,
+				&consumed_size, &decoded_size);
+      if (rc)
+	return rc;
+      if (consumed_size != file->buflevel || decoded_size != len)
+	return GDBM_MALFORMED_DATA;
+      dat->dptr = (void*) file->data[n].buffer;
+    }
+  else
+    {
+      dat->dptr = "";
+    }
   return 0;
 }
 
@@ -351,7 +420,7 @@ _set_gdbm_meta_info (GDBM_FILE dbf, char *param, int meta_mask)
 	    }
 	}
     }
-  
+
   if (!(meta_mask & GDBM_META_MASK_MODE))
     {
       p = getparm (param, "mode");
@@ -366,7 +435,7 @@ _set_gdbm_meta_info (GDBM_FILE dbf, char *param, int meta_mask)
 	    }
 	}
     }
-  
+
   if (meta_flags)
     {
       int fd = gdbm_fdesc (dbf);
@@ -414,16 +483,16 @@ static int
 _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
 		 int mode, int replace, int meta_mask)
 {
-  char *param = NULL;
   int rc;
   GDBM_FILE tmp = NULL;
   int format = 0;
   const char *p;
-  
+  size_t count = 0;
+
   rc = get_parms (file);
   if (rc)
     return rc;
-  
+
   if (file->parmc)
     {
       file->header = file->buffer;
@@ -440,11 +509,11 @@ _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
 	format = n;
       /* FIXME: other values silently ignored */
     }
-      
+
   if (!dbf)
     {
       const char *filename = getparm (file->header, "file");
-      
+
       if (!filename)
 	return GDBM_NO_DBNAME;
 
@@ -461,36 +530,46 @@ _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
        * gdbm_convert will return 0 immediately.
        */
       if (gdbm_convert (dbf, format))
-	{	
+	{
 	  rc = gdbm_errno;
 	  if (tmp)
 	    gdbm_close (tmp);
 	  return rc;
 	}
-    }	  
-  
-  param = file->header;
+    }
+
   while (1)
     {
       datum key, content;
-      rc = read_record (file, param, 0, &key);
+      rc = read_record (file, 0, &key);
       if (rc)
 	{
-	  if (rc == GDBM_ITEM_NOT_FOUND && feof (file->fp))
-	    rc = 0;
+	  if (rc == GDBM_ITEM_NOT_FOUND)
+	    {
+	      size_t n;
+
+	      if (feof (file->fp))
+		/* Dumps created by version 1.18 lacked final parameter block.
+		 */
+		rc = GDBM_NO_ERROR;
+	      else if (get_num (file->buffer, "count", &n) == 0 && n == count)
+		rc = GDBM_NO_ERROR;
+	      else
+		rc = GDBM_MALFORMED_DATA;
+	    }
 	  break;
 	}
-      param = NULL;
 
-      rc = read_record (file, NULL, 1, &content);
+      rc = read_record (file, 1, &content);
       if (rc)
 	break;
-      
+
       if (gdbm_store (dbf, key, content, replace))
 	{
 	  rc = gdbm_errno;
 	  break;
 	}
+      count++;
     }
 
   if (rc == 0)
@@ -500,15 +579,15 @@ _gdbm_load_file (struct dump_file *file, GDBM_FILE dbf, GDBM_FILE *ofp,
     }
   else if (tmp)
     gdbm_close (tmp);
-    
+
   return rc;
 }
 
 static int
 read_bdb_header (struct dump_file *file)
-{    
+{
   char buf[256];
-  
+
   file->line = 1;
   if (!fgets (buf, sizeof (buf), file->fp))
     return -1;
@@ -531,7 +610,7 @@ c2x (int c)
   if (!p)
     return -1;
   return p - xdig;
-} 
+}
 
 #define DINCR 128
 
@@ -540,12 +619,12 @@ xdatum_read (FILE *fp, datum *d, size_t *pdmax)
 {
   int c;
   size_t dmax = *pdmax;
-  
+
   d->dsize = 0;
   while ((c = fgetc (fp)) != EOF && c != '\n')
     {
       int t, n;
-      
+
       t = c2x (c);
       if (t == -1)
 	return EOF;
@@ -553,7 +632,7 @@ xdatum_read (FILE *fp, datum *d, size_t *pdmax)
 
       if ((c = fgetc (fp)) == EOF)
 	break;
-    
+
       n = c2x (c);
       if (n == -1)
 	return EOF;
@@ -582,7 +661,7 @@ gdbm_load_bdb_dump (struct dump_file *file, GDBM_FILE dbf, int replace)
   size_t xs[2];
   int rc, c;
   int i;
-  
+
   if (read_bdb_header (file))
     return -1;
   memset (&xd, 0, sizeof (xd));
@@ -608,7 +687,7 @@ gdbm_load_bdb_dump (struct dump_file *file, GDBM_FILE dbf, int replace)
   free (xd[1].dptr);
   if (rc == 0 && i)
     rc = EOF;
-    
+
   return rc;
 }
 
@@ -688,7 +767,7 @@ gdbm_load (GDBM_FILE *pdbf, const char *filename, int replace,
 {
   FILE *fp;
   int rc;
-  
+
   fp = fopen (filename, "r");
   if (!fp)
     {
@@ -699,4 +778,3 @@ gdbm_load (GDBM_FILE *pdbf, const char *filename, int replace,
   fclose (fp);
   return rc;
 }
-

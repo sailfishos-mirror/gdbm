@@ -71,6 +71,7 @@ TESTSUITE_AT = \
  delete00.at\
  delete01.at\
  delete02.at\
+ emptydatum.at\
  gdbmtool00.at\
  gdbmtool01.at\
  gdbmtool02.at\
@@ -126,6 +127,7 @@ check_PROGRAMS = \
  gtdel\
  gtdump\
  gtfetch\
+ gtimport\
  gtload\
  gtopt\
  gtrecover\

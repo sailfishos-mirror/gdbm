@@ -53,6 +53,38 @@ db_perror (char const *fmt, ...)
   fputc ('\n', stderr);
 }
 
+struct kvpair
+{
+  char *key;
+  char *value;
+};
+
+GDBM_FILE
+create_db_pairs (char const *name, struct kvpair *kvp)
+{
+  GDBM_FILE dbf = gdbm_open (name, 0, GDBM_NEWDB, 0644, NULL);
+  assert (dbf != NULL);
+  for (; kvp->key; kvp++)
+    {
+      datum key;
+      datum content;
+
+      key.dsize = strlen (kvp->key);
+      key.dptr = kvp->key;
+
+      content.dsize = strlen (kvp->value);
+      content.dptr = kvp->value;
+
+      if (gdbm_store (dbf, key, content, 0))
+	{
+	  db_perror ("%s: can't insert key \"%s\"", __func__, kvp->key);
+	  gdbm_close (dbf);
+	  dbf = NULL;
+	}
+    }
+  return dbf;
+}
+
 GDBM_FILE
 createdb (char const *name)
 {
@@ -71,7 +103,7 @@ createdb (char const *name)
   if (rc == -1)
     {
       perror (cmd);
-      exit (1);
+      return NULL;
     }
   else if (WIFEXITED (rc))
     {
@@ -79,7 +111,7 @@ createdb (char const *name)
       if (rc)
 	{
 	  fprintf (stderr, "%s: terminated with code %d\n", cmd, rc);
-	  exit (1);
+	  return NULL;
 	}
     }
   else if (WIFSIGNALED (rc))
@@ -88,26 +120,25 @@ createdb (char const *name)
       if (WCOREDUMP (rc))
 	fprintf (stderr, " (core dumped)");
       fputc ('\n', stderr);
-      exit (1);
+      return NULL;
     }
   else
     {
       fprintf (stderr, "%s: terminated with unrecognized status: %d", cmd, rc);
-      exit (1);
+      return NULL;
     }
 
   db = gdbm_open (name, 0, GDBM_READER, 0, NULL);
   if (db == NULL)
     {
       db_perror ("can't open %s", name);
-      exit (1);
     }
 
   return db;
 }
 
 int
-db_cmp (GDBM_FILE a, GDBM_FILE b)
+db_cmp (char const *testname, GDBM_FILE a, GDBM_FILE b)
 {
   datum key, adata, bdata;
   gdbm_count_t an, bn;
@@ -125,8 +156,8 @@ db_cmp (GDBM_FILE a, GDBM_FILE b)
 
   if (an != bn)
     {
-      fprintf (stderr, "key counts differ: a=%lu, b=%lu\n",
-	       (unsigned long)an, (unsigned long)bn);
+      fprintf (stderr, "%s: key counts differ: a=%lu, b=%lu\n",
+	       testname, (unsigned long)an, (unsigned long)bn);
       return -1;
     }
 
@@ -182,8 +213,8 @@ db_cmp (GDBM_FILE a, GDBM_FILE b)
  * Load binary dump into a non-existing (NULL) database.  This should
  * fail with GDBM_NO_DBNAME.
  */
-void
-test_bindump_0 (GDBM_FILE dbf)
+int
+test_bindump_0 (char const *testname, GDBM_FILE dbf)
 {
   GDBM_FILE b = NULL;
 
@@ -191,22 +222,23 @@ test_bindump_0 (GDBM_FILE dbf)
     {
       if (gdbm_errno != GDBM_NO_DBNAME)
 	{
-	  db_perror ("%s: loading binary dump to non-existing database failed with unexpected error", __func__);
-	  exit (1);
+	  db_perror ("%s: loading binary dump to non-existing database failed with unexpected error", testname);
+	  return -1;
 	}
     }
   else
     {
-      fprintf (stderr, "%s: loading binary dump to non-existing database succeeded when it should not\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: loading binary dump to non-existing database succeeded when it should not\n", testname);
+      return -1;
     }
+  return 0;
 }
 
 /*
  * Load binary dump into an existing empty database.
  */
-void
-test_bindump_1 (GDBM_FILE dbf)
+int
+test_bindump_1 (char const *testname, GDBM_FILE dbf)
 {
   GDBM_FILE b;
 
@@ -216,24 +248,26 @@ test_bindump_1 (GDBM_FILE dbf)
   b = gdbm_open (b_name, 0, GDBM_NEWDB, 0644, NULL);
   if (b == NULL)
     {
-      db_perror ("%s: can't open %s", __func__, b_name);
-      exit (1);
+      db_perror ("%s: %s: can't open %s", testname, __func__, b_name);
+      return -1;
     }
 
   if (gdbm_load (&b, bin_dumpname, GDBM_INSERT, 0, NULL))
     {
-      db_perror ("%s: failed to load database from binary dump", __func__);
-      exit (1);
+      db_perror ("%s: %s: failed to load database from binary dump",
+		 testname, __func__);
+      return -1;
     }
 
   /* Compare two databases. */
-  if (db_cmp (dbf, b))
+  if (db_cmp (testname, dbf, b))
     {
-      fprintf (stderr, "%s: databases differ\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: %s: databases differ\n", testname, __func__);
+      return -1;
     }
 
   gdbm_close (b);
+  return 0;
 }
 
 /*
@@ -242,80 +276,74 @@ test_bindump_1 (GDBM_FILE dbf)
  * fail with GDBM_CANNOT_REPLACE.
  * When run with GDBM_REPLACE, it should succeed.
  */
-void
-test_bindump_2 (GDBM_FILE dbf)
+int
+test_bindump_2 (char const *testname, struct kvpair *kvp, GDBM_FILE dbf)
 {
   GDBM_FILE b;
-  datum key, dat;
 
-  b = gdbm_open (b_name, 0, GDBM_NEWDB, 0644, NULL);
+  b = create_db_pairs (b_name, kvp);
   if (b == NULL)
     {
-      db_perror ("%s: can't open %s", __func__, b_name);
-      exit (1);
+      db_perror ("%s: %s: can't open %s", testname, __func__, b_name);
+      return -1;
     }
 
-  key.dptr = "99";
-  key.dsize = 2;
-  dat.dptr = "99";
-  dat.dsize = 2;
-  if (gdbm_store (b, key, dat, 0))
-    {
-      db_perror ("%s: can't store datum", __func__);
-      exit (1);
-    }
   gdbm_sync (b);
-  
+
   if (gdbm_load (&b, bin_dumpname, GDBM_INSERT, 0, NULL))
     {
       if (gdbm_errno != GDBM_CANNOT_REPLACE)
 	{
-	  db_perror ("%s: expected GDBM_CANNOT_REPLACE, but got", __func__);
-	  exit (1);
+	  db_perror ("%s: %s: expected GDBM_CANNOT_REPLACE, but got",
+		     testname, __func__);
+	  return -1;
 	}
     }
 
   if (gdbm_load (&b, bin_dumpname, GDBM_REPLACE, 0, NULL))
     {
-      db_perror ("%s: failed to load from ASCII dump", __func__);
-      exit (1);
+      db_perror ("%s: %s: failed to load from ASCII dump",
+		 testname, __func__);
+      return -1;
     }
 
-  if (db_cmp (dbf, b))
+  if (db_cmp (testname, dbf, b))
     {
-      fprintf (stderr, "%s: databases differ\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: %s: databases differ\n",
+	       testname, __func__);
+      return -1;
     }
-  
+
   gdbm_close (b);
+  return 0;
 }
-  
+
 /*
  * Test dumping to and restoring from binary dump format.
  */
-void
-test_bindump (GDBM_FILE dbf)
+int
+test_bindump (char const *testname, struct kvpair *kvp, GDBM_FILE dbf)
 {
   /*
    * Create a binary dump.
    */
   if (gdbm_dump (dbf, bin_dumpname, GDBM_DUMP_FMT_BINARY, GDBM_NEWDB, 0600))
     {
-      fprintf (stderr, "%s: failed to dump: %s\n", __func__,
+      fprintf (stderr, "%s: %s: failed to dump: %s\n", testname, __func__,
 	       gdbm_db_strerror (dbf));
-      exit (1);
+      return -1;
     }
 
-  test_bindump_0 (dbf);
-  test_bindump_1 (dbf);
-  test_bindump_2 (dbf);
+  return test_bindump_0 (testname, dbf) ||
+    test_bindump_1 (testname, dbf) ||
+    test_bindump_2 (testname, kvp, dbf);
 }
 
 /*
  * Load ASCII dump into a non-existing (NULL) database.
  */
-void
-test_asciidump_0 (GDBM_FILE dbf)
+int
+test_asciidump_0 (const char *testname, GDBM_FILE dbf)
 {
   GDBM_FILE b = NULL;
 
@@ -325,8 +353,8 @@ test_asciidump_0 (GDBM_FILE dbf)
   if (gdbm_load (&b, ascii_dumpname, GDBM_INSERT,
 		 GDBM_META_MASK_MODE|GDBM_META_MASK_OWNER, NULL))
     {
-      db_perror ("%s: can't load from ascii dump", __func__);
-      exit (1);
+      db_perror ("%s: %s: can't load from ascii dump", testname, __func__);
+      return -1;
     }
 
   /*
@@ -334,28 +362,30 @@ test_asciidump_0 (GDBM_FILE dbf)
    */
   if (access (a_name, F_OK))
     {
-      fprintf (stderr, "%s: %s: %s\n", __func__, a_name, strerror (errno));
-      exit (1);
+      fprintf (stderr, "%s: %s: %s: %s\n", testname, __func__, a_name,
+	       strerror (errno));
+      return -1;
     }
 
   /* Compare the two databases. */
-  if (db_cmp (dbf, b))
+  if (db_cmp (testname, dbf, b))
     {
-      fprintf (stderr, "%s: databases differ\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: %s: databases differ\n", testname, __func__);
+      return -1;
     }
-  
+
   gdbm_close (b);
 
   /* Cleanup */
   unlink (a_name);
+  return 0;
 }
 
 /*
  * Load ASCII dump into an existing empty database.
  */
-void
-test_asciidump_1 (GDBM_FILE dbf)
+int
+test_asciidump_1 (char const *testname, GDBM_FILE dbf)
 {
   GDBM_FILE b;
 
@@ -365,15 +395,15 @@ test_asciidump_1 (GDBM_FILE dbf)
   b = gdbm_open (b_name, 0, GDBM_NEWDB, 0644, NULL);
   if (b == NULL)
     {
-      db_perror ("%s: can't open %s", __func__, b_name);
-      exit (1);
+      db_perror ("%s: %s: can't open %s", testname, __func__, b_name);
+      return -1;
     }
 
   if (gdbm_load (&b, ascii_dumpname, GDBM_INSERT,
 		 GDBM_META_MASK_MODE|GDBM_META_MASK_OWNER, NULL))
     {
-      db_perror ("%s: can't load from ascii dump", __func__);
-      exit (1);
+      db_perror ("%s: %s: can't load from ascii dump", testname, __func__);
+      return -1;
     }
 
   /*
@@ -381,17 +411,19 @@ test_asciidump_1 (GDBM_FILE dbf)
    */
   if (access (a_name, F_OK) == 0)
     {
-      fprintf (stderr, "%s: %s exists when it should not\n", __func__, a_name);
-      exit (1);
+      fprintf (stderr, "%s: %s: %s exists when it should not\n", testname,
+	       __func__, a_name);
+      return -1;
     }
 
-  if (db_cmp (dbf, b))
+  if (db_cmp (testname, dbf, b))
     {
-      fprintf (stderr, "%s: databases differ\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: %s: databases differ\n", testname, __func__);
+      return -1;
     }
-  
+
   gdbm_close (b);
+  return 0;
 }
 
 /*
@@ -400,28 +432,18 @@ test_asciidump_1 (GDBM_FILE dbf)
  * fail with GDBM_CANNOT_REPLACE.
  * When run with GDBM_REPLACE, it should succeed.
  */
-void
-test_asciidump_2 (GDBM_FILE dbf)
+int
+test_asciidump_2 (char const *testname, struct kvpair *kvp, GDBM_FILE dbf)
 {
   GDBM_FILE b;
-  datum key, dat;
 
-  b = gdbm_open (b_name, 0, GDBM_NEWDB, 0644, NULL);
+  b = create_db_pairs (b_name, kvp);
   if (b == NULL)
     {
-      db_perror ("%s: can't open %s", __func__, b_name);
-      exit (1);
+      db_perror ("%s: %s: can't open %s", testname, __func__, b_name);
+      return -1;
     }
 
-  key.dptr = "99";
-  key.dsize = 2;
-  dat.dptr = "99";
-  dat.dsize = 2;
-  if (gdbm_store (b, key, dat, 0))
-    {
-      db_perror ("%s: can't store datum", __func__);
-      exit (1);
-    }
   gdbm_sync (b);
 
   if (gdbm_load (&b, ascii_dumpname, GDBM_INSERT,
@@ -429,41 +451,43 @@ test_asciidump_2 (GDBM_FILE dbf)
     {
       if (gdbm_errno != GDBM_CANNOT_REPLACE)
 	{
-	  db_perror ("%s: expected GDBM_CANNOT_REPLACE, but got", __func__);
-	  exit (1);
+	  db_perror ("%s: %s: expected GDBM_CANNOT_REPLACE, but got",
+		     testname, __func__);
+	  return -1;
 	}
     }
 
   if (gdbm_load (&b, ascii_dumpname, GDBM_REPLACE,
 		 GDBM_META_MASK_MODE|GDBM_META_MASK_OWNER, NULL))
     {
-      db_perror ("%s: failed to load from ASCII dump", __func__);
-      exit (1);
+      db_perror ("%s: %s: failed to load from ASCII dump", testname, __func__);
+      return -1;
     }
 
-  if (db_cmp (dbf, b))
+  if (db_cmp (testname, dbf, b))
     {
-      fprintf (stderr, "%s: databases differ\n", __func__);
-      exit (1);
+      fprintf (stderr, "%s: %s: databases differ\n", testname, __func__);
+      return -1;
     }
-  
+
   gdbm_close (b);
+  return 0;
 }
 
 /*
  * Test dumping to and restoring from ASCII dump format.
  */
-void
-test_asciidump (GDBM_FILE dbf)
+int
+test_asciidump (char const *testname, struct kvpair *kvp, GDBM_FILE dbf)
 {
   /*
    * Create a dump in ASCII format.
    */
   if (gdbm_dump (dbf, ascii_dumpname, GDBM_DUMP_FMT_ASCII, GDBM_NEWDB, 0600))
     {
-      fprintf (stderr, "%s: failed to dump: %s\n", __func__,
+      fprintf (stderr, "%s: %s: failed to dump: %s\n", testname, __func__,
 	       gdbm_db_strerror (dbf));
-      exit (1);
+      return -1;
     }
 
   /*
@@ -471,35 +495,182 @@ test_asciidump (GDBM_FILE dbf)
    */
   if (unlink (orig_name) && errno != ENOENT)
     {
-      fprintf (stderr, "%s: failed to remove %s: %s\n", __func__,
-	       orig_name, strerror (errno));
-      exit (1);
+      fprintf (stderr, "%s: %s: failed to remove %s: %s\n", testname,
+	       __func__, orig_name, strerror (errno));
+      return -1;
     }
 
   if (rename (a_name, orig_name))
     {
       fprintf (stderr, "%s: can't rename %s to %s: %s\n", __func__,
 	       a_name, orig_name, strerror (errno));
-      exit (1);
+      return -1;
     }
 
-  test_asciidump_0 (dbf);
-  test_asciidump_1 (dbf);
-  test_asciidump_2 (dbf);
+  return test_asciidump_0 (testname, dbf) ||
+    test_asciidump_1 (testname, dbf) ||
+    test_asciidump_2 (testname, kvp, dbf);
 }
 
-int
-main (int argc, char **argv)
+static int
+runtest_regular (char const *testname)
 {
-  GDBM_FILE db;
+  GDBM_FILE dbf;
+  static struct kvpair kvp[] = {
+    { "99", "99" },
+    { NULL }
+  };
+  int res;
 
-  db = createdb (a_name);
-  test_bindump (db);
-  test_asciidump (db);
+  dbf = createdb (a_name);
+  res = test_bindump (testname, kvp, dbf) ||
+    test_asciidump (testname, kvp, dbf);
+  gdbm_close (dbf);
+  return res;
+}
+
+static int
+runtest_emptykey (char const *testname)
+{
+  static struct kvpair kvp[] = {
+    { "1", "one" },
+    { "", "empty" },
+    { "2", "two" },
+    { NULL }
+  };
+  GDBM_FILE dbf = create_db_pairs (a_name, kvp);
+  int res = test_bindump (testname, kvp, dbf) ||
+    test_asciidump (testname, kvp, dbf);
+  gdbm_close (dbf);
+  return res;
+}
+
+static int
+runtest_emptyval (char const *testname)
+{
+  static struct kvpair kvp[] = {
+    { "1", "one" },
+    { "empty", "" },
+    { "2", "two" },
+    { NULL }
+  };
+  GDBM_FILE dbf = create_db_pairs (a_name, kvp);
+  int res = test_bindump (testname, kvp, dbf) ||
+    test_asciidump (testname, kvp, dbf);
+  gdbm_close (dbf);
+  return res;
+}
+
+static int
+runtest_emptykv (char const *testname)
+{
+  static struct kvpair kvp[] = {
+    { "1", "one" },
+    { "", "" },
+    { "2", "two" },
+    { NULL }
+  };
+  GDBM_FILE dbf = create_db_pairs (a_name, kvp);
+  int res = test_bindump (testname, kvp, dbf) ||
+    test_asciidump (testname, kvp, dbf);
+  gdbm_close (dbf);
+  return res;
+}
+
+
+struct testdef
+{
+  char *name;
+  int (*runtest) (char const *);
+};
+
+struct testdef testtab[] = {
+  { "regular", runtest_regular },
+  { "emptykey", runtest_emptykey },
+  { "emptyval", runtest_emptyval },
+  { "emptykv", runtest_emptykv },
+  { NULL }
+};
+
+static int
+want (char **argv, char const *name)
+{
+  if (!*argv)
+    return 1;
+  while (*argv)
+    {
+      if (strcmp (name, *argv) == 0)
+	return 1;
+      ++argv;
+    }
+  return 0;
+}
+
+static void
+cleanup (void)
+{
   unlink (a_name);
   unlink (b_name);
   unlink (orig_name);
   unlink (bin_dumpname);
   unlink (ascii_dumpname);
-  return 0;
+}
+
+int
+main (int argc, char **argv)
+{
+  struct testdef *td;
+  int c;
+  int verbose = 0;
+  int preserve = 0;
+  int status = 0;
+
+  while ((c = getopt (argc, argv, "vp")) != EOF)
+    {
+      switch (c)
+	{
+	case 'v':
+	  verbose++;
+	  break;
+
+	case 'p':
+	  preserve++;
+	  break;
+
+	default:
+	  exit (2);
+	}
+    }
+
+  argc -= optind;
+  argv += optind;
+
+  cleanup ();
+  for (td = testtab; td->name; td++)
+    {
+      if (want (argv, td->name))
+	{
+	  int res;
+	  if (verbose)
+	    {
+	      printf ("%s: ", td->name);
+	      fflush (stdout);
+	    }
+	  res = td->runtest (td->name);
+	  if (res == 0)
+	    {
+	      if (verbose)
+		printf ("OK");
+	    }
+	  else
+	    status = 1;
+	  if (verbose)
+	    putchar ('\n');
+	  if (preserve)
+	    break;
+	  cleanup ();
+	}
+    }
+
+  return status;
 }

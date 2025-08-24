@@ -45,7 +45,9 @@ m4_include([delete02.at])
 
 m4_include([closerr.at])
 
+AT_BANNER([Export and import])
 m4_include([dumpload.at])
+m4_include([emptydatum.at])
 
 AT_BANNER([GDBM locking])
 m4_include([lockwait_ret.at])

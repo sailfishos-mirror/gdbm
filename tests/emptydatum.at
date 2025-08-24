@@ -1,0 +1,134 @@
+# This file is part of GDBM testsuite.                      -*- autoconf -*-
+# Copyright (C) 2025 Free Software Foundation, Inc.
+#
+# GDBM is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# GDBM is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with GDBM. If not, see <http://www.gnu.org/licenses/>. */
+AT_SETUP([ASCII dumps with empty keys or values])
+AT_KEYWORDS([dump load import export asciidump emptydatum])
+
+#
+# GDBM up to version 1.26 was unable to load ascii dumps that contain
+# zero-length keys or data.  This test verifies that it is no longer
+# the case.
+#
+# Reported-by: Nicolas Mora <nicolas@babelouest.org>
+# References: <419bf8ee-3638-4693-9551-29a3a9ed3c4d@babelouest.org>
+
+AT_CHECK([
+AT_DATA([emptykey.dump],
+[# GDBM dump file created by GDBM version 1.26.  (built Jul 30 2025 12:46:40) on Sun Aug 24 11:50:53 2025
+#:version=1.1
+#:file=a.gdbm
+#:uid=1000,user=gray,gid=1000,group=gray,mode=644
+#:format=standard
+# End of header
+#:len=1
+MQ==
+#:len=3
+b25l
+#:len=0
+#:len=5
+ZW1wdHk=
+#:len=1
+Mg==
+#:len=3
+dHdv
+#:count=3
+# End of data
+])
+gtimport emptykey.dump
+],
+[0],
+[0:
+5: 65 6D 70 74 79
+
+1: 31
+3: 6F 6E 65
+
+1: 32
+3: 74 77 6F
+
+])
+
+AT_CHECK([
+AT_DATA([emptyval.dump],
+[# GDBM dump file created by GDBM version 1.26.  (built Jul 30 2025 12:46:40) on Sun Aug 24 11:51:10 2025
+#:version=1.1
+#:file=a.gdbm
+#:uid=1000,user=gray,gid=1000,group=gray,mode=644
+#:format=standard
+# End of header
+#:len=1
+MQ==
+#:len=3
+b25l
+#:len=1
+Mg==
+#:len=3
+dHdv
+#:len=5
+ZW1wdHk=
+#:len=0
+#:count=3
+# End of data
+])
+gtimport emptyval.dump
+],
+[0],
+[1: 31
+3: 6F 6E 65
+
+1: 32
+3: 74 77 6F
+
+5: 65 6D 70 74 79
+0:
+
+])
+
+AT_CHECK([
+AT_DATA([emptykv.dump],
+[# GDBM dump file created by GDBM version 1.26.  (built Jul 30 2025 12:46:40) on Sun Aug 24 11:51:19 2025
+#:version=1.1
+#:file=a.gdbm
+#:uid=1000,user=gray,gid=1000,group=gray,mode=644
+#:format=standard
+# End of header
+#:len=1
+MQ==
+#:len=3
+b25l
+#:len=0
+#:len=0
+#:len=1
+Mg==
+#:len=3
+dHdv
+#:count=3
+# End of data
+])
+gtimport emptykv.dump
+],
+[0],
+[0:
+0:
+
+1: 31
+3: 6F 6E 65
+
+1: 32
+3: 74 77 6F
+
+])
+
+AT_CLEANUP

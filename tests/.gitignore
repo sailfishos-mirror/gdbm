@@ -19,6 +19,7 @@ gtconv
 gtdel
 gtdump
 gtfetch
+gtimport
 gtload
 gtopt
 gtrecover

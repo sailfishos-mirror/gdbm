@@ -36,17 +36,20 @@ print_datum (datum const *dat, unsigned char **bufptr,
     return rc;
   
   p = *bufptr;
-  while (len)
-    {
-      size_t n = len;
-      if (n > _GDBM_MAX_DUMP_LINE_LEN)
-	n = _GDBM_MAX_DUMP_LINE_LEN;
-      if (fwrite (p, n, 1, fp) != 1)
-	return GDBM_FILE_WRITE_ERROR;
-      fputc ('\n', fp);
-      len -= n;
-      p += n;
-    }
+  if (len == 0)
+    fputs ("#\n", fp);
+  else
+    while (len)
+      {
+	size_t n = len;
+	if (n > _GDBM_MAX_DUMP_LINE_LEN)
+	  n = _GDBM_MAX_DUMP_LINE_LEN;
+	if (fwrite (p, n, 1, fp) != 1)
+	  return GDBM_FILE_WRITE_ERROR;
+	fputc ('\n', fp);
+	len -= n;
+	p += n;
+      }
   return 0;
 }
 
@@ -72,7 +75,7 @@ _gdbm_dump_ascii (GDBM_FILE dbf, FILE *fp)
   time (&t);
   fprintf (fp, "# GDBM dump file created by %s on %s",
 	   gdbm_version, ctime (&t));
-  fprintf (fp, "#:version=1.1\n");
+  fprintf (fp, "#:version=1.2\n");
 
   fprintf (fp, "#:file=%s\n", dbf->name);
   fprintf (fp, "#:uid=%lu,", (unsigned long) st.st_uid);
@@ -113,8 +116,6 @@ _gdbm_dump_ascii (GDBM_FILE dbf, FILE *fp)
       count++;
     }
 
-  /* FIXME: Something like that won't hurt, although load does not
-     use it currently. */
   fprintf (fp, "#:count=%lu\n", (unsigned long) count);
   fprintf (fp, "# End of data\n");
   
